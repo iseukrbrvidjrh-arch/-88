@@ -12,7 +12,7 @@
   <main>
     <header>
       <div><h1>SceneLingo</h1><p id="service-status" role="status">正在检查服务状态…</p></div>
-      <nav><button id="show-library" type="button">字幕库</button> <button id="show-vocabulary" type="button">学习库</button> <button id="back-to-library" type="button" hidden>返回字幕库</button></nav>
+      <nav><button id="show-library" type="button">字幕库</button> <button id="show-vocabulary" type="button">学习库</button> <button id="show-review" type="button">复习</button> <button id="back-to-library" type="button" hidden>返回字幕库</button></nav>
     </header>
     <section id="subtitle-library" aria-labelledby="library-title">
       <h2 id="library-title">字幕库</h2>
@@ -37,6 +37,7 @@
       <p id="vocabulary-message" role="status"></p><div id="vocabulary-list"></div>
     </section>
     <section id="vocabulary-detail" hidden><button id="back-to-vocabulary" type="button">返回学习库</button><h2 id="word-title"></h2><dl id="word-fields"></dl><h3>来源语境</h3><div id="context-list"></div></section>
+    <section id="review-panel" hidden><h2>复习</h2><label>模式 <select id="review-mode"><option value="spelling">拼写</option><option value="meaning">词义回忆</option></select></label><button id="load-review" type="button">加载到期队列</button><p id="review-message" role="status"></p><div id="review-card" hidden><p id="review-prompt"></p><label>拼写答案 <input id="review-input" autocomplete="off" autocorrect="off"></label><fieldset><legend>最终评分</legend><label><input type="radio" name="rating" value="good" checked>记得</label><label><input type="radio" name="rating" value="hard">模糊</label><label><input type="radio" name="rating" value="again">忘记</label></fieldset><button id="submit-review" type="button">确认并保存</button></div></section>
   </main>
 </body>
 </html>

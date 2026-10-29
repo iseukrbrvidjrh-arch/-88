@@ -126,7 +126,7 @@ def test_v4_migration_backs_up_v3_and_preserves_subtitles(tmp_path):
     database = Database(tmp_path / "data" / "scenelingo.db")
     initialize_database(database, migrations=MIGRATIONS[:3])
     import_subtitle(database, filename="legacy.srt", data=DATA, now=lambda: NOW)
-    result = initialize_database(database)
+    result = initialize_database(database, migrations=MIGRATIONS[:4])
     assert result.applied_versions == (4,) and result.backup_path is not None
     with database.connection() as connection:
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}

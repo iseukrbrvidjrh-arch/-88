@@ -19,6 +19,7 @@ import uvicorn
 from app.api.system import router
 from app.api.subtitles import router as subtitles_router
 from app.api.vocabulary import router as vocabulary_router
+from app.api.review import router as review_router
 from app.core.errors import ApplicationError
 from app.core.config import DEFAULT_PORT, ConfigError, Settings, load_settings, prepare_data_dir
 from app.core.logging import close_logger, open_logger
@@ -82,7 +83,7 @@ def create_app(settings: Settings | None = None,
             app.state.token = None
 
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
-    app.state.clock = clock or (lambda: datetime.now(timezone.utc))
+    app.state.clock = clock or (lambda: datetime.now().astimezone())
 
     @app.middleware("http")
     async def local_security(request: Request, call_next):
@@ -142,6 +143,7 @@ def create_app(settings: Settings | None = None,
     app.include_router(router)
     app.include_router(subtitles_router)
     app.include_router(vocabulary_router)
+    app.include_router(review_router)
     app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
     return app
 

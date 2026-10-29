@@ -120,9 +120,28 @@ def _create_vocabulary_tables(session: MigrationSession) -> None:
     """)
 
 
+def _create_review_attempts(session: MigrationSession) -> None:
+    session.execute("""
+        CREATE TABLE review_attempt (
+            id INTEGER PRIMARY KEY, attempt_token TEXT NOT NULL UNIQUE,
+            learning_item_id INTEGER NOT NULL REFERENCES learning_item(id) ON DELETE RESTRICT,
+            mode TEXT NOT NULL CHECK(mode IN ('spelling','meaning')),
+            attempted_at TEXT NOT NULL, attempted_local_date TEXT NOT NULL,
+            user_input TEXT, is_spelling_correct INTEGER CHECK(is_spelling_correct IS NULL OR is_spelling_correct IN (0,1)),
+            self_rating TEXT NOT NULL CHECK(self_rating IN ('good','hard','again')),
+            final_rating TEXT NOT NULL CHECK(final_rating IN ('good','hard','again')),
+            is_success INTEGER NOT NULL CHECK(is_success IN (0,1)),
+            interval_before_days INTEGER, interval_after_days INTEGER NOT NULL CHECK(interval_after_days >= 1),
+            next_review_date TEXT NOT NULL, created_at TEXT NOT NULL
+        )
+    """)
+    session.execute("CREATE INDEX idx_review_item_date ON review_attempt(learning_item_id, attempted_at DESC)")
+
+
 MIGRATIONS = (
     Migration(1, "Initialize storage baseline without business tables", _initialize_storage),
     Migration(2, "Create subtitle, cue and subtitle token tables", _create_subtitle_tables),
     Migration(3, "Persist skipped invalid cue count with legacy unknown semantics", _add_invalid_cue_count),
     Migration(4, "Create vocabulary items, contexts and initial review state", _create_vocabulary_tables),
+    Migration(5, "Create immutable idempotent review attempt history", _create_review_attempts),
 )

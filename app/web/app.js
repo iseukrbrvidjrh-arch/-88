@@ -15,7 +15,7 @@ async function post(path, body) {
 }
 function text(element, value) { element.textContent = value; }
 function showOnly(selector) {
-  ['#subtitle-library', '#subtitle-detail', '#vocabulary-library', '#vocabulary-detail'].forEach((id) => { $(id).hidden = id !== selector; });
+  ['#subtitle-library', '#subtitle-detail', '#vocabulary-library', '#vocabulary-detail', '#review-panel'].forEach((id) => { $(id).hidden = id !== selector; });
 }
 
 async function loadLibrary() {
@@ -135,6 +135,7 @@ $('#cue-next').addEventListener('click', () => { state.detailPage += 1; loadDeta
 $('#back-to-library').addEventListener('click', loadLibrary);
 $('#show-library').addEventListener('click', loadLibrary);
 $('#show-vocabulary').addEventListener('click', loadVocabulary);
+$('#show-review').addEventListener('click', () => showOnly('#review-panel'));
 $('#back-to-vocabulary').addEventListener('click', loadVocabulary);
 $('#vocabulary-controls').addEventListener('submit', (event) => { event.preventDefault(); loadVocabulary(); });
 $('#candidate-list').addEventListener('click', async (event) => {
@@ -152,6 +153,24 @@ $('#context-list').addEventListener('click', async (event) => {
     state.detailPage = Math.ceil(located.target.sequence / 50); await loadDetail();
     document.querySelector(`#cue-${event.target.dataset.cueId}`)?.scrollIntoView({ block: 'center' });
   } catch (_) { text($('#vocabulary-message'), '来源定位失败。'); }
+});
+
+let reviewItems = [];
+$('#load-review').addEventListener('click', async () => {
+  try {
+    const mode=$('#review-mode').value; const data=await api(`/api/v1/review/queue?mode=${mode}`); reviewItems=data.items;
+    text($('#review-message'), data.message || `到期 ${data.total} 个词条`); $('#review-card').hidden=!data.total;
+    if (data.total) text($('#review-prompt'), mode === 'spelling' ? (data.items[0].context || '请根据记忆拼写当前词条。') : data.items[0].display_text);
+    $('#review-input').hidden = mode !== 'spelling';
+  } catch (_) { text($('#review-message'),'复习队列加载失败。'); }
+});
+$('#submit-review').addEventListener('click', async () => {
+  if (!reviewItems.length) return; const mode=$('#review-mode').value;
+  const rating=document.querySelector('input[name="rating"]:checked').value;
+  try {
+    const result=await post('/api/v1/review/attempts',{learning_item_id:reviewItems[0].learning_item_id,mode,user_input:mode==='spelling'?$('#review-input').value:null,final_rating:rating,attempt_token:crypto.randomUUID()});
+    text($('#review-message'),`已保存：${result.status}，下次 ${result.next_review_date}`); reviewItems.shift(); $('#review-card').hidden=true;
+  } catch (_) { text($('#review-message'),'提交失败；未确认保存前不会产生复习记录。'); }
 });
 
 api('/api/v1/system/info')
