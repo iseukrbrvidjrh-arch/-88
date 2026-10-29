@@ -1,0 +1,1 @@
+"""SceneLingo local application."""
