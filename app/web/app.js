@@ -20,7 +20,7 @@ function showOnly(selector) {
 
 async function loadLibrary() {
   showOnly('#subtitle-library'); $('#back-to-library').hidden = true;
-  const query = new URLSearchParams({ q: $('#subtitle-search').value, sort: $('#subtitle-sort').value, page: String(state.libraryPage), page_size: '50' });
+  const query = new URLSearchParams({ status: $('#subtitle-status').value, q: $('#subtitle-search').value, sort: $('#subtitle-sort').value, page: String(state.libraryPage), page_size: '50' });
   try {
     const data = await api(`/api/v1/subtitles?${query}`);
     const list = $('#subtitle-list'); list.replaceChildren();
@@ -31,7 +31,11 @@ async function loadLibrary() {
       const invalid = item.invalid_cue_count === null ? '跳过数未知（旧数据）' : `跳过 ${item.invalid_cue_count} 条`;
       text(stats, `${item.source_format.toUpperCase()} · ${item.cue_count} cue · ${item.token_occurrence_count} 词次 · ${item.unique_token_count} 去重词形 · ${invalid}`);
       const button = document.createElement('button'); button.type = 'button'; button.dataset.subtitleId = item.id; text(button, '打开');
-      card.append(heading, stats, button); list.append(card);
+      const lifecycle = document.createElement('span');
+      const archive = document.createElement('button'); archive.type = 'button'; archive.dataset.lifecycleId = item.id;
+      archive.dataset.action = item.status === 'archived' ? 'restore' : 'archive'; text(archive, item.status === 'archived' ? '恢复' : '归档（推荐）');
+      const remove = document.createElement('button'); remove.type = 'button'; remove.dataset.lifecycleId = item.id; remove.dataset.action = 'delete'; text(remove, '删除…');
+      lifecycle.append(archive, remove); card.append(heading, stats, button, lifecycle); list.append(card);
     });
     text($('#library-message'), data.total ? '' : '还没有导入字幕。字幕导入入口将在后续界面任务中完善。');
     text($('#library-page'), `第 ${data.page} 页 · 共 ${data.total} 条`);
@@ -109,6 +113,21 @@ async function loadWord(itemId) {
 
 $('#library-controls').addEventListener('submit', (event) => { event.preventDefault(); state.libraryPage = 1; loadLibrary(); });
 $('#subtitle-list').addEventListener('click', (event) => { const id = event.target.dataset.subtitleId; if (id) { state.subtitleId = Number(id); state.detailPage = 1; loadDetail(); } });
+$('#subtitle-list').addEventListener('click', async (event) => {
+  const id = Number(event.target.dataset.lifecycleId); const action = event.target.dataset.action;
+  if (!id || !action) return;
+  try {
+    if (action === 'archive' || action === 'restore') await post(`/api/v1/subtitles/${id}/${action}`, {});
+    else {
+      const preview = await api(`/api/v1/subtitles/${id}/deletion-preview`);
+      const strategy = preview.direct_delete_allowed ? 'direct' : 'freeze_snapshot';
+      const warning = preview.direct_delete_allowed ? '确认永久删除该字幕？此操作不可撤销。' : `该字幕关联 ${preview.associated_context_count} 个学习语境。确认删除字幕并保留冻结快照？`;
+      if (!window.confirm(warning)) return;
+      await post(`/api/v1/subtitles/${id}/delete`, { strategy, confirmed: true });
+    }
+    await loadLibrary();
+  } catch (_) { text($('#library-message'), '操作未完成；有关联字幕只能归档或确认保留冻结快照后删除。'); }
+});
 $('#library-prev').addEventListener('click', () => { state.libraryPage -= 1; loadLibrary(); });
 $('#library-next').addEventListener('click', () => { state.libraryPage += 1; loadLibrary(); });
 $('#cue-prev').addEventListener('click', () => { state.detailPage -= 1; loadDetail(); });

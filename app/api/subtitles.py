@@ -9,9 +9,16 @@ from starlette.concurrency import run_in_threadpool
 from app.core.errors import ApplicationError
 from app.services.subtitle_import import MAX_FILE_BYTES, import_subtitle
 from app.services.subtitle_query import list_subtitles, locate_cue, subtitle_detail
+from app.services.subtitle_lifecycle import change_archive, delete_subtitle, deletion_preview
+from pydantic import BaseModel
 
 
 router = APIRouter(prefix="/api/v1/subtitles")
+
+
+class DeleteRequest(BaseModel):
+    strategy: str
+    confirmed: bool
 
 
 @router.get("")
@@ -40,6 +47,27 @@ async def get_cue_location(request: Request, subtitle_id: int,
         locate_cue, request.app.state.database, subtitle_id,
         cue_id=cue_id, sequence=sequence, radius=radius,
     ))
+
+
+@router.post("/{subtitle_id}/archive")
+async def archive_subtitle(request: Request, subtitle_id: int):
+    return await run_in_threadpool(partial(change_archive, request.app.state.database, subtitle_id, True))
+
+
+@router.post("/{subtitle_id}/restore")
+async def restore_subtitle(request: Request, subtitle_id: int):
+    return await run_in_threadpool(partial(change_archive, request.app.state.database, subtitle_id, False))
+
+
+@router.get("/{subtitle_id}/deletion-preview")
+async def preview_deletion(request: Request, subtitle_id: int):
+    return await run_in_threadpool(partial(deletion_preview, request.app.state.database, subtitle_id))
+
+
+@router.post("/{subtitle_id}/delete")
+async def execute_deletion(request: Request, subtitle_id: int, body: DeleteRequest):
+    return await run_in_threadpool(partial(delete_subtitle, request.app.state.database, subtitle_id,
+        strategy=body.strategy, confirmed=body.confirmed, now=request.app.state.clock))
 
 
 @router.post("", status_code=201)
