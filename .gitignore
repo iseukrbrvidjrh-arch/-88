@@ -19,6 +19,8 @@ __pycache__/
 *.db
 *.db-shm
 *.db-wal
+*.db-journal
+*.db.partial
 *.sqlite
 *.sqlite3
 *.sqlite-shm
@@ -26,6 +28,7 @@ __pycache__/
 *.sqlite3-shm
 *.sqlite3-wal
 data/
+backups/
 records/
 learning_records/
 exports/

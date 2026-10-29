@@ -17,20 +17,30 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 import uvicorn
 
 from app.api.system import router
+from app.api.subtitles import router as subtitles_router
+from app.api.vocabulary import router as vocabulary_router
+from app.core.errors import ApplicationError
 from app.core.config import DEFAULT_PORT, ConfigError, Settings, load_settings, prepare_data_dir
 from app.core.logging import close_logger, open_logger
 from app.core.security import SECURITY_HEADERS, check_request, new_token
+from app.repositories.database import Database, StorageError
+from app.repositories.migrations.runner import MigrationResult, initialize_database
 
 
 WEB_DIR = Path(__file__).parent / "web"
 
 
-def error_response(status: int, code: str, message: str) -> JSONResponse:
-    return JSONResponse(status_code=status, content={"error": {"code": code, "message": message}})
+def error_response(status: int, code: str, message: str,
+                   details: dict | None = None) -> JSONResponse:
+    error: dict[str, object] = {"code": code, "message": message}
+    if details is not None:
+        error["details"] = details
+    return JSONResponse(status_code=status, content={"error": error})
 
 
 def create_app(settings: Settings | None = None,
-               clock: Callable[[], datetime] | None = None) -> FastAPI:
+               clock: Callable[[], datetime] | None = None,
+               startup_storage: tuple[Database, MigrationResult] | None = None) -> FastAPI:
     settings = settings or load_settings()
 
     @asynccontextmanager
@@ -38,10 +48,33 @@ def create_app(settings: Settings | None = None,
         prepare_data_dir(settings.data_dir)
         logger = open_logger(settings.data_dir, settings.log_level)
         app.state.logger = logger
-        app.state.token = new_token()
-        app.state.data_dir_ready = True
-        logger.info("startup", extra={"operation": "startup"})
         try:
+            try:
+                database, result = startup_storage or (
+                    Database(settings.database_path), None
+                )
+                if result is None:
+                    result = initialize_database(database)
+                else:
+                    with database.connection() as connection:
+                        if database.self_check(connection) != result.target_version:
+                            raise StorageError("启动前数据库版本发生变化，已停止启动；请检查 backups/。")
+            except StorageError:
+                logger.error("database_startup_failed", extra={
+                    "operation": "database_migration", "code": "storage_error",
+                })
+                raise
+            app.state.database = database
+            app.state.data_dir_ready = True
+            app.state.token = new_token()
+            logger.info("database_ready", extra={
+                "operation": "database_migration",
+                "code": "applied" if result.applied_versions else "already_current",
+                "current_version": result.previous_version,
+                "target_version": result.target_version,
+                "applied_count": len(result.applied_versions),
+            })
+            logger.info("startup", extra={"operation": "startup"})
             yield
         finally:
             logger.info("shutdown", extra={"operation": "shutdown"})
@@ -80,6 +113,18 @@ def create_app(settings: Settings | None = None,
     async def validation_error(_request: Request, _exc: RequestValidationError):
         return error_response(422, "invalid_request", "请求内容无效，请检查输入。")
 
+    @app.exception_handler(ApplicationError)
+    async def application_error(_request: Request, exc: ApplicationError):
+        return error_response(exc.status_code, exc.code, exc.message, exc.details)
+
+    @app.exception_handler(StorageError)
+    async def storage_error(request: Request, _exc: StorageError):
+        request.app.state.logger.error("storage_error", extra={
+            "operation": "subtitle_import", "code": "storage_error",
+            "request_id": request.state.request_id,
+        })
+        return error_response(503, "storage_error", "本地存储暂时不可用；导入未保存，请稍后重试。")
+
     @app.exception_handler(Exception)
     async def unexpected_error(request: Request, _exc: Exception):
         request.app.state.logger.error("internal_error", extra={
@@ -95,6 +140,8 @@ def create_app(settings: Settings | None = None,
         return HTMLResponse(page)
 
     app.include_router(router)
+    app.include_router(subtitles_router)
+    app.include_router(vocabulary_router)
     app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
     return app
 
@@ -103,15 +150,31 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="启动 SceneLingo 本地服务（仅 127.0.0.1）。")
     parser.add_argument("--port", help=f"本地端口，默认 {DEFAULT_PORT}；可由 SCENELINGO_PORT 覆盖")
     parser.add_argument("--data-dir", help="数据目录，默认 ~/Library/Application Support/SceneLingo")
+    parser.add_argument("--db-path", help="SQLite 数据库路径；相对路径以数据目录为基准")
     parser.add_argument("--log-level", help="日志级别：DEBUG/INFO/WARNING/ERROR")
     args = parser.parse_args(argv)
     try:
-        settings = load_settings(port=args.port, data_dir=args.data_dir, log_level=args.log_level)
-        prepare_data_dir(settings.data_dir)
+        settings = load_settings(port=args.port, data_dir=args.data_dir,
+                                 db_path=args.db_path, log_level=args.log_level)
     except ConfigError as exc:
-        print(f"配置错误：{exc}", file=sys.stderr)
+        print(f"启动失败：{exc}", file=sys.stderr)
         return 2
-    uvicorn.run(create_app(settings), host="127.0.0.1", port=settings.port,
+    try:
+        prepare_data_dir(settings.data_dir)
+        database = Database(settings.database_path)
+        result = initialize_database(database)
+    except (ConfigError, StorageError) as exc:
+        try:
+            failure_logger = open_logger(settings.data_dir, settings.log_level)
+            failure_logger.error("storage_startup_failed", extra={
+                "operation": "database_migration", "code": "storage_error",
+            })
+            close_logger(failure_logger)
+        except OSError:
+            pass  # The directory itself may be unavailable; stderr remains the recovery channel.
+        print(f"启动失败：{exc}", file=sys.stderr)
+        return 2
+    uvicorn.run(create_app(settings, startup_storage=(database, result)), host="127.0.0.1", port=settings.port,
                 workers=1, reload=False, access_log=False, log_level=settings.log_level.lower())
     return 0
 

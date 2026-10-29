@@ -10,10 +10,32 @@
 </head>
 <body>
   <main>
-    <h1>SceneLingo</h1>
-    <p>本地应用基础骨架已启动。</p>
-    <p id="service-status" role="status">正在检查服务状态…</p>
-    <p>字幕学习功能将在后续任务中实现。</p>
+    <header>
+      <div><h1>SceneLingo</h1><p id="service-status" role="status">正在检查服务状态…</p></div>
+      <nav><button id="show-library" type="button">字幕库</button> <button id="show-vocabulary" type="button">学习库</button> <button id="back-to-library" type="button" hidden>返回字幕库</button></nav>
+    </header>
+    <section id="subtitle-library" aria-labelledby="library-title">
+      <h2 id="library-title">字幕库</h2>
+      <form id="library-controls">
+        <label>搜索标题 <input id="subtitle-search" type="search" autocomplete="off"></label>
+        <label>排序 <select id="subtitle-sort"><option value="imported_at">最近导入</option><option value="title">标题</option></select></label>
+        <button type="submit">查询</button>
+      </form>
+      <p id="library-message" role="status"></p><div id="subtitle-list"></div>
+      <nav class="pager" aria-label="字幕库分页"><button id="library-prev" type="button">上一页</button><span id="library-page"></span><button id="library-next" type="button">下一页</button></nav>
+    </section>
+    <section id="subtitle-detail" aria-labelledby="detail-title" hidden>
+      <h2 id="detail-title">字幕详情</h2><p id="detail-summary"></p>
+      <p id="detail-message" role="status"></p><ol id="cue-list"></ol>
+      <nav class="pager" aria-label="字幕 cue 分页"><button id="cue-prev" type="button">上一页</button><span id="cue-page"></span><button id="cue-next" type="button">下一页</button></nav>
+      <h3>词汇候选</h3><p id="candidate-message" role="status"></p><div id="candidate-list"></div>
+    </section>
+    <section id="vocabulary-library" aria-labelledby="vocabulary-title" hidden>
+      <h2 id="vocabulary-title">学习库</h2>
+      <form id="vocabulary-controls"><label>搜索词形 <input id="vocabulary-search" type="search"></label><label>排序 <select id="vocabulary-sort"><option value="created_at">加入时间</option><option value="frequency">词次</option><option value="alphabetical">字母</option></select></label><button type="submit">查询</button></form>
+      <p id="vocabulary-message" role="status"></p><div id="vocabulary-list"></div>
+    </section>
+    <section id="vocabulary-detail" hidden><button id="back-to-vocabulary" type="button">返回学习库</button><h2 id="word-title"></h2><dl id="word-fields"></dl><h3>来源语境</h3><div id="context-list"></div></section>
   </main>
 </body>
 </html>

@@ -31,6 +31,10 @@ class JsonFormatter(logging.Formatter):
         request_id = getattr(record, "request_id", None)
         if request_id is not None:
             item["request_id"] = request_id
+        for name in ("current_version", "target_version", "applied_count"):
+            value = getattr(record, name, None)
+            if value is not None:
+                item[name] = value
         return json.dumps(item, ensure_ascii=False, separators=(",", ":"))
 
 

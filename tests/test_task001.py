@@ -153,8 +153,8 @@ def test_token_is_rotated_on_restart_and_not_written_to_disk(tmp_path):
         assert second in client.get("/").text
     for file in (tmp_path / "data").rglob("*"):
         if file.is_file():
-            content = file.read_text(encoding="utf-8")
-            assert first not in content and second not in content
+            content = file.read_bytes()
+            assert first.encode() not in content and second.encode() not in content
 
 
 def test_json_only_api_and_uniform_error(tmp_path):

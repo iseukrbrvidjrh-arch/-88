@@ -65,6 +65,9 @@ def check_request(request: Request, *, port: int, token: str) -> tuple[int, str,
                 return 401, "invalid_token", "访问令牌缺失或无效。请刷新本机页面。"
         if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
             content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-            if content_type != "application/json":
-                return 415, "invalid_content_type", "API 请求必须使用 application/json。"
+            is_subtitle_upload = request.method == "POST" and path == "/api/v1/subtitles"
+            expected = "multipart/form-data" if is_subtitle_upload else "application/json"
+            if content_type != expected:
+                message = "字幕上传必须使用 multipart/form-data。" if is_subtitle_upload else "API 请求必须使用 application/json。"
+                return 415, "invalid_content_type", message
     return None
