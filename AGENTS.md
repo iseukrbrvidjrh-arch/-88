@@ -18,4 +18,6 @@ Rules:
 - Report actual test results and limitations.
 - Never expose API keys.
 - Do not upload private files or use cloud services without approval.
+- Follow `docs/07-Git协作与版本管理规范.md` for all Git operations; never commit or push concurrently with Claude Code.
+- Do not stage, commit, or overwrite Claude Code's uncommitted work.
 - Do not commit or push without user approval.
