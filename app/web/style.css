@@ -18,6 +18,12 @@ textarea { display: block; width: min(100%, 42rem); min-height: 5rem; box-sizing
 #cue-list li { margin: .8rem 0; padding: .65rem; border-left: 3px solid #9bb7d0; white-space: pre-line; }
 .timeline { display: block; color: #526679; font-variant-numeric: tabular-nums; font-size: .9rem; }
 .pager { justify-content: center; margin-top: 1rem; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(8rem,1fr)); gap: .75rem; margin: 1rem 0; }
+.stats-grid article, .continue-card, .daily-record { border: 1px solid #d8e0e8; border-radius: .5rem; padding: .8rem; }
+.stats-grid strong, .stats-grid span { display: block; }
+.stats-grid strong { font-size: 1.5rem; }
+#progress-range { display: flex; gap: .75rem; flex-wrap: wrap; align-items: end; margin: 1rem 0; }
+.daily-record { margin: .5rem 0; }
 [hidden] { display: none !important; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #1967a3; outline-offset: 2px; }
 @media (max-width: 48rem) { body { padding: 1rem .5rem; } main { padding: 1rem; } .chat-layout { grid-template-columns: 1fr; } .chat-layout aside { border-right: 0; border-bottom: 1px solid #d8e0e8; } }

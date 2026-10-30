@@ -12,8 +12,16 @@
   <main>
     <header>
       <div><h1>SceneLingo</h1><p id="service-status" role="status">正在检查服务状态…</p></div>
-      <nav><button id="show-library" type="button">字幕库</button> <button id="show-vocabulary" type="button">学习库</button> <button id="show-review" type="button">复习</button> <button id="show-chat" type="button">AI Tutor</button> <button id="show-settings" type="button">设置</button> <button id="back-to-library" type="button" hidden>返回字幕库</button></nav>
+      <nav><button id="show-dashboard" type="button">学习记录</button> <button id="show-library" type="button">字幕库</button> <button id="show-vocabulary" type="button">学习库</button> <button id="show-review" type="button">复习</button> <button id="show-chat" type="button">AI Tutor</button> <button id="show-settings" type="button">设置</button> <button id="back-to-library" type="button" hidden>返回字幕库</button></nav>
     </header>
+    <section id="progress-dashboard" aria-labelledby="progress-title" hidden>
+      <h2 id="progress-title">学习记录</h2>
+      <div id="continue-card" class="continue-card" hidden><h3>继续学习</h3><p id="continue-summary"></p><button id="continue-learning" type="button">继续上次学习</button></div>
+      <p id="continue-message" role="status"></p>
+      <div id="progress-stats" class="stats-grid" aria-label="学习库状态统计"></div>
+      <form id="progress-range"><label>开始日期 <input id="progress-start" type="date"></label><label>结束日期 <input id="progress-end" type="date"></label><button type="submit">查看记录</button></form>
+      <p id="progress-message" role="status"></p><div id="daily-records"></div>
+    </section>
     <section id="subtitle-library" aria-labelledby="library-title">
       <h2 id="library-title">字幕库</h2>
       <form id="subtitle-upload"><label>导入 SRT/VTT <input id="subtitle-file" type="file" accept=".srt,.vtt" required></label><button type="submit">导入字幕</button></form>

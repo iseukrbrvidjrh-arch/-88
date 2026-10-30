@@ -1,7 +1,7 @@
 const token = document.querySelector('meta[name="scenelingo-token"]').content;
 const headers = { 'X-SceneLingo-Token': token, Accept: 'application/json' };
 const $ = (selector) => document.querySelector(selector);
-const state = { libraryPage: 1, detailPage: 1, subtitleId: null };
+const state = { libraryPage: 1, detailPage: 1, subtitleId: null, resume: null, targetCueId: null, resumeReviewItemId: null };
 
 async function api(path) {
   const response = await fetch(path, { headers, cache: 'no-store' });
@@ -10,6 +10,11 @@ async function api(path) {
 }
 async function post(path, body) {
   const response = await fetch(path, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!response.ok) throw new Error('request_failed');
+  return response.json();
+}
+async function put(path, body) {
+  const response = await fetch(path, { method: 'PUT', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!response.ok) throw new Error('request_failed');
   return response.json();
 }
@@ -25,7 +30,26 @@ function errorMessage(error) {
 }
 function text(element, value) { element.textContent = value; }
 function showOnly(selector) {
-  ['#subtitle-library', '#subtitle-detail', '#vocabulary-library', '#vocabulary-detail', '#review-panel', '#chat-panel', '#settings-panel'].forEach((id) => { $(id).hidden = id !== selector; });
+  ['#progress-dashboard', '#subtitle-library', '#subtitle-detail', '#vocabulary-library', '#vocabulary-detail', '#review-panel', '#chat-panel', '#settings-panel'].forEach((id) => { $(id).hidden = id !== selector; });
+}
+
+async function loadProgress() {
+  showOnly('#progress-dashboard'); $('#back-to-library').hidden = true;
+  try {
+    const [summary, daily, resume] = await Promise.all([api('/api/v1/progress/summary'), api('/api/v1/progress/daily'), api('/api/v1/progress/continue')]);
+    state.resume = resume;
+    const stats = $('#progress-stats'); stats.replaceChildren();
+    [['学习词条', summary.total_active], ['待学习', summary.new_count], ['学习中', summary.learning_count], ['已掌握', summary.mastered_count], ['今日到期', summary.due_today_count]].forEach(([label, value]) => {
+      const card=document.createElement('article'); const number=document.createElement('strong'); text(number,String(value)); const name=document.createElement('span'); text(name,label); card.append(number,name); stats.append(card);
+    });
+    const records=$('#daily-records'); records.replaceChildren();
+    daily.items.forEach(item=>{const row=document.createElement('article');row.className='daily-record';const accuracy=item.review_accuracy===null?'暂无':`${Math.round(item.review_accuracy*100)}%`;text(row,`${item.date} · 新增词条 ${item.new_learning_item_count} · 复习 ${item.review_attempt_count} 次（${item.distinct_review_item_count} 个词）· 正确 ${item.correct_review_count} · 正确率 ${accuracy} · AI 保存 ${item.ai_saved_content_count}`);records.append(row);});
+    text($('#progress-message'),daily.total?'':'暂无学习记录。仅打开、导入或浏览不会产生学习日。');
+    $('#continue-card').hidden=!resume.available;
+    if(resume.available){const parts=[];if(resume.subtitle)parts.push(`${resume.subtitle.subtitle_title} · cue #${resume.subtitle.cue_sequence}`);if(resume.review)parts.push(`复习剩余 ${resume.review.remaining_count} 个`);text($('#continue-summary'),parts.join('；'));}
+    text($('#continue-message'),resume.stale_reference?'部分上次位置已失效；可用位置仍可继续。':(resume.available?'':'还没有可继续的位置。'));
+    if(resume.stale_reference&&!resume.available){await loadLibrary();text($('#library-message'),'上次学习位置已失效，已返回字幕库。');}
+  } catch (_) { text($('#progress-message'),'学习记录加载失败，请重试。'); }
 }
 
 async function loadLibrary() {
@@ -67,6 +91,8 @@ async function loadDetail() {
       const play=document.createElement('button'); play.type='button'; play.dataset.speechText=cue.text; play.dataset.speechTarget='sentence'; text(play,'朗读句子'); item.append(play);
       const ask=document.createElement('button'); ask.type='button'; ask.dataset.chatCueId=cue.id; ask.dataset.chatContext=cue.text; text(ask,'用 AI 学习'); item.append(ask);
     });
+    const resumeCue=data.cues.find(cue=>cue.id===state.targetCueId)||data.cues[0];
+    if(resumeCue){await put('/api/v1/progress/continue',{subtitle_id:state.subtitleId,cue_id:resumeCue.id});state.targetCueId=null;}
     text($('#detail-message'), data.cues.length ? '' : '本页没有 cue。');
     text($('#cue-page'), `第 ${data.page} 页 · 共 ${data.total} 条`);
     $('#cue-prev').disabled = data.page <= 1; $('#cue-next').disabled = data.page * data.page_size >= data.total;
@@ -152,6 +178,7 @@ $('#cue-prev').addEventListener('click', () => { state.detailPage -= 1; loadDeta
 $('#cue-next').addEventListener('click', () => { state.detailPage += 1; loadDetail(); });
 $('#back-to-library').addEventListener('click', loadLibrary);
 $('#show-library').addEventListener('click', loadLibrary);
+$('#show-dashboard').addEventListener('click', loadProgress);
 $('#show-vocabulary').addEventListener('click', loadVocabulary);
 $('#show-review').addEventListener('click', () => showOnly('#review-panel'));
 $('#show-chat').addEventListener('click', () => { showOnly('#chat-panel'); loadConversations(); });
@@ -170,7 +197,7 @@ $('#context-list').addEventListener('click', async (event) => {
   try {
     const located = await api(`/api/v1/subtitles/${state.subtitleId}/locate?cue_id=${event.target.dataset.cueId}`);
     if (!located.available) { text($('#vocabulary-message'), '来源已不可用。'); return; }
-    state.detailPage = Math.ceil(located.target.sequence / 50); await loadDetail();
+    state.detailPage = Math.ceil(located.target.sequence / 50); state.targetCueId=Number(event.target.dataset.cueId); await loadDetail();
     document.querySelector(`#cue-${event.target.dataset.cueId}`)?.scrollIntoView({ block: 'center' });
   } catch (_) { text($('#vocabulary-message'), '来源定位失败。'); }
 });
@@ -192,8 +219,10 @@ let reviewItems = [];
 $('#load-review').addEventListener('click', async () => {
   try {
     const mode=$('#review-mode').value; const data=await api(`/api/v1/review/queue?mode=${mode}`); reviewItems=data.items;
+    if(state.resumeReviewItemId){const index=reviewItems.findIndex(item=>item.learning_item_id===state.resumeReviewItemId);if(index>0)reviewItems=reviewItems.slice(index).concat(reviewItems.slice(0,index));state.resumeReviewItemId=null;}
     text($('#review-message'), data.message || `到期 ${data.total} 个词条`); $('#review-card').hidden=!data.total;
-    if (data.total) text($('#review-prompt'), mode === 'spelling' ? (data.items[0].context || '请根据记忆拼写当前词条。') : data.items[0].display_text);
+    if (data.total) { text($('#review-prompt'), mode === 'spelling' ? (data.items[0].context || '请根据记忆拼写当前词条。') : data.items[0].display_text); await put('/api/v1/progress/continue',{review_item_id:data.items[0].learning_item_id}); }
+    else await put('/api/v1/progress/continue',{clear_review:true});
     $('#review-input').hidden = mode !== 'spelling';
   } catch (_) { text($('#review-message'),'复习队列加载失败。'); }
 });
@@ -202,14 +231,19 @@ $('#submit-review').addEventListener('click', async () => {
   const rating=document.querySelector('input[name="rating"]:checked').value;
   try {
     const result=await post('/api/v1/review/attempts',{learning_item_id:reviewItems[0].learning_item_id,mode,user_input:mode==='spelling'?$('#review-input').value:null,final_rating:rating,attempt_token:crypto.randomUUID()});
-    text($('#review-message'),`已保存：${result.status}，下次 ${result.next_review_date}`); reviewItems.shift(); $('#review-card').hidden=true;
+    text($('#review-message'),`已保存：${result.status}，下次 ${result.next_review_date}`); reviewItems.shift();
+    if(reviewItems.length){text($('#review-prompt'),mode==='spelling'?(reviewItems[0].context||'请根据记忆拼写当前词条。'):reviewItems[0].display_text);await put('/api/v1/progress/continue',{review_item_id:reviewItems[0].learning_item_id});$('#review-input').value='';}
+    else {await put('/api/v1/progress/continue',{clear_review:true});$('#review-card').hidden=true;}
   } catch (_) { text($('#review-message'),'提交失败；未确认保存前不会产生复习记录。'); }
 });
 
 api('/api/v1/system/info')
   .then((info) => text($('#service-status'), `本地服务正常运行 · 版本 ${info.version}`))
   .catch(() => text($('#service-status'), '无法获取服务状态，请刷新页面。'));
-loadLibrary();
+loadProgress();
+
+$('#progress-range').addEventListener('submit',async event=>{event.preventDefault();try{const query=new URLSearchParams();if($('#progress-start').value)query.set('start_date',$('#progress-start').value);if($('#progress-end').value)query.set('end_date',$('#progress-end').value);const data=await api(`/api/v1/progress/daily?${query}`);const records=$('#daily-records');records.replaceChildren();data.items.forEach(item=>{const row=document.createElement('article');row.className='daily-record';const accuracy=item.review_accuracy===null?'暂无':`${Math.round(item.review_accuracy*100)}%`;text(row,`${item.date} · 新增词条 ${item.new_learning_item_count} · 复习 ${item.review_attempt_count} 次（${item.distinct_review_item_count} 个词）· 正确 ${item.correct_review_count} · 正确率 ${accuracy} · AI 保存 ${item.ai_saved_content_count}`);records.append(row);});text($('#progress-message'),data.total?'':'所选日期暂无学习记录。');}catch(_){text($('#progress-message'),'日期范围无效。');}});
+$('#continue-learning').addEventListener('click',async()=>{const resume=state.resume;if(!resume)return;if(resume.subtitle){state.subtitleId=resume.subtitle.subtitle_id;state.detailPage=Math.ceil(resume.subtitle.cue_sequence/50);state.targetCueId=resume.subtitle.cue_id;await loadDetail();document.querySelector(`#cue-${resume.subtitle.cue_id}`)?.scrollIntoView({block:'center'});}else if(resume.review){state.resumeReviewItemId=resume.review.learning_item_id;showOnly('#review-panel');$('#load-review').click();}else{await loadLibrary();text($('#library-message'),'上次位置已失效，已返回字幕库。');}});
 function updateNetworkState() { text($('#network-state'),navigator.onLine?'当前可联网；本地功能不依赖网络。':'当前离线；字幕、学习库和复习仍可使用。'); }
 window.addEventListener('online',updateNetworkState); window.addEventListener('offline',updateNetworkState); updateNetworkState();
 
