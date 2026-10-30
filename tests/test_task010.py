@@ -116,7 +116,7 @@ def test_v6_migrates_existing_v5_without_changing_existing_data(tmp_path):
     initialize_database(db,migrations=MIGRATIONS[:5])
     with db.connection() as conn, transaction(conn):
         conn.execute("INSERT INTO learning_item(entry_type,dedupe_key,display_text,source_kind,saved_from_ai,created_at,updated_at,created_local_date) VALUES('word','hello','hello','manual',0,'now','now','2026-10-30')")
-    result=initialize_database(db)
+    result=initialize_database(db,migrations=MIGRATIONS[:6])
     assert result.applied_versions==(6,) and result.backup_path is not None
     with db.connection() as conn:
         assert conn.execute("SELECT display_text FROM learning_item").fetchone()==("hello",)

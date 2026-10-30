@@ -25,7 +25,7 @@ function errorMessage(error) {
 }
 function text(element, value) { element.textContent = value; }
 function showOnly(selector) {
-  ['#subtitle-library', '#subtitle-detail', '#vocabulary-library', '#vocabulary-detail', '#review-panel', '#settings-panel'].forEach((id) => { $(id).hidden = id !== selector; });
+  ['#subtitle-library', '#subtitle-detail', '#vocabulary-library', '#vocabulary-detail', '#review-panel', '#chat-panel', '#settings-panel'].forEach((id) => { $(id).hidden = id !== selector; });
 }
 
 async function loadLibrary() {
@@ -65,6 +65,7 @@ async function loadDetail() {
       const timeline = document.createElement('span'); timeline.className = 'timeline'; text(timeline, `#${cue.sequence}  ${cue.start_time} → ${cue.end_time}`);
       const content = document.createElement('span'); text(content, cue.text); item.append(timeline, content); list.append(item);
       const play=document.createElement('button'); play.type='button'; play.dataset.speechText=cue.text; play.dataset.speechTarget='sentence'; text(play,'朗读句子'); item.append(play);
+      const ask=document.createElement('button'); ask.type='button'; ask.dataset.chatCueId=cue.id; ask.dataset.chatContext=cue.text; text(ask,'用 AI 学习'); item.append(ask);
     });
     text($('#detail-message'), data.cues.length ? '' : '本页没有 cue。');
     text($('#cue-page'), `第 ${data.page} 页 · 共 ${data.total} 条`);
@@ -109,6 +110,7 @@ async function loadWord(itemId) {
     const word = await api(`/api/v1/vocabulary/${itemId}`); showOnly('#vocabulary-detail'); text($('#word-title'), word.display_text);
     const ipa=await api(`/api/v1/pronunciation?word=${encodeURIComponent(word.dedupe_key)}`);
     $('#play-word').dataset.speechText=word.display_text; $('#play-word').dataset.speechTarget='word';
+    $('#word-title').dataset.wordId=word.id;
     const fields = $('#word-fields'); fields.replaceChildren();
     [['状态', '待学习'], ['IPA', ipa.display], ['音标来源', ipa.found ? `${ipa.source} · ${ipa.accent}` : '本地未收录'], ['释义', word.definition_display], ['下次复习', word.next_review_display], ['复习历史', word.review_history_display]].forEach(([name, value]) => {
       const term = document.createElement('dt'); const description = document.createElement('dd'); text(term, name); text(description, value); fields.append(term, description);
@@ -152,6 +154,7 @@ $('#back-to-library').addEventListener('click', loadLibrary);
 $('#show-library').addEventListener('click', loadLibrary);
 $('#show-vocabulary').addEventListener('click', loadVocabulary);
 $('#show-review').addEventListener('click', () => showOnly('#review-panel'));
+$('#show-chat').addEventListener('click', () => { showOnly('#chat-panel'); loadConversations(); });
 $('#show-settings').addEventListener('click', () => { showOnly('#settings-panel'); loadAiSettings(); });
 $('#back-to-vocabulary').addEventListener('click', loadVocabulary);
 $('#vocabulary-controls').addEventListener('submit', (event) => { event.preventDefault(); loadVocabulary(); });
@@ -221,3 +224,26 @@ $('#delete-api-key').addEventListener('click',async()=>{ try { await fetch('/api
 $('#preview-ai').addEventListener('click',async()=>{ try { aiPlan=await post('/api/v1/ai/send-plans',{kind:$('#ai-kind').value,text:$('#ai-text').value,context:$('#ai-context').value}); text($('#ai-preview-content'),JSON.stringify(aiPlan.actual_content,null,2)); $('#ai-preview').hidden=false; text($('#ai-result'),'请逐项检查以上内容；确认后才会联网。'); } catch (_) { text($('#ai-result'),'无法生成预览：请检查云端同意、开关与 Key。'); } });
 $('#cancel-ai').addEventListener('click',()=>{aiPlan=null;$('#ai-preview').hidden=true;text($('#ai-result'),'已取消，没有发送。');});
 $('#confirm-ai').addEventListener('click',async()=>{ if(!aiPlan)return; const current=aiPlan; aiPlan=null; $('#ai-preview').hidden=true; try { const result=await post('/api/v1/ai/execute',{plan_id:current.plan_id,execution_token:current.execution_token}); text($('#ai-result'),`${result.result}\n来源：${result.source==='local_cache'?'本地缓存':'千问 API'} · 模型：${result.model}`); } catch (_) { text($('#ai-result'),'千问调用失败；没有自动重试，本地功能仍可使用。'); } });
+
+const chatState={conversationId:null,plan:null,context:null,controller:null,saveMessageId:null};
+async function loadConversations(){
+  try { const data=await api('/api/v1/ai/chat/conversations'); const list=$('#conversation-list'); list.replaceChildren(); data.items.forEach(c=>{const row=document.createElement('div');const open=document.createElement('button');open.type='button';open.dataset.conversationId=c.id;text(open,`${c.title} (${c.message_count})`);const del=document.createElement('button');del.type='button';del.dataset.deleteConversation=c.id;text(del,'删除');row.append(open,del);list.append(row);}); if(!data.items.length)text($('#chat-status'),'请新建会话。'); }
+  catch(_){text($('#chat-status'),'会话列表加载失败。');}
+}
+async function openConversation(id){
+  try { const data=await api(`/api/v1/ai/chat/conversations/${id}`);chatState.conversationId=id;const list=$('#chat-messages');list.replaceChildren();data.messages.forEach(renderChatMessage);text($('#chat-status'),data.title); }
+  catch(_){text($('#chat-status'),'会话加载失败。');}
+}
+function renderChatMessage(message){const card=document.createElement('article');card.className=`chat-message ${message.role}`;const meta=document.createElement('span');meta.className='message-meta';text(meta,message.role==='assistant'?`AI 生成，可能不准确 · ${message.status}`:`你 · ${message.status}`);const body=document.createElement('span');text(body,message.content);card.append(meta,body);if(message.role==='assistant'&&message.status==='complete'){const save=document.createElement('button');save.type='button';save.dataset.saveMessageId=message.id;save.dataset.saveText=message.content;text(save,'保存选中内容');card.append(save);}$('#chat-messages').append(card);return card;}
+$('#new-chat').addEventListener('click',async()=>{try{const c=await post('/api/v1/ai/chat/conversations',{title:'新会话'});await loadConversations();await openConversation(c.id);}catch(_){text($('#chat-status'),'新建会话失败。');}});
+$('#conversation-list').addEventListener('click',async event=>{if(event.target.dataset.conversationId)openConversation(Number(event.target.dataset.conversationId));if(event.target.dataset.deleteConversation){const id=Number(event.target.dataset.deleteConversation);if(!window.confirm('删除会话？已保存学习内容会保留。'))return;try{await fetch(`/api/v1/ai/chat/conversations/${id}`,{method:'DELETE',headers:{...headers,'Content-Type':'application/json'}}).then(r=>{if(!r.ok)throw new Error();});if(chatState.conversationId===id){chatState.conversationId=null;$('#chat-messages').replaceChildren();}loadConversations();}catch(_){text($('#chat-status'),'删除会话失败。');}}});
+document.addEventListener('click',event=>{if(event.target.dataset.chatCueId){chatState.context={cue_id:Number(event.target.dataset.chatCueId),text:event.target.dataset.chatContext};text($('#chat-context'),`当前字幕：${chatState.context.text}`);$('#remove-chat-context').hidden=false;showOnly('#chat-panel');loadConversations();}});
+$('#remove-chat-context').addEventListener('click',()=>{chatState.context=null;text($('#chat-context'),'未引用字幕或词条');$('#remove-chat-context').hidden=true;});
+$('#ask-word-ai').addEventListener('click',()=>{chatState.context={learning_item_id:Number($('#word-title').dataset.wordId),text:$('#word-title').textContent};text($('#chat-context'),`选中词：${chatState.context.text}`);$('#remove-chat-context').hidden=false;showOnly('#chat-panel');loadConversations();});
+$('#preview-chat').addEventListener('click',async()=>{if(!chatState.conversationId){text($('#chat-status'),'请先新建或打开会话。');return;}try{chatState.plan=await post('/api/v1/ai/chat/send-plans',{conversation_id:chatState.conversationId,text:$('#chat-input').value,template:$('#chat-template').value,history_count:$('#chat-history').checked?2:0,cue_id:chatState.context?.cue_id||null,learning_item_id:chatState.context?.learning_item_id||null});text($('#chat-preview-content'),JSON.stringify(chatState.plan.actual_content,null,2));text($('#chat-preview-meta'),`历史 ${chatState.plan.history_count} 条 · 附件 ${chatState.plan.attachments.length} 个 · 模型 ${chatState.plan.model} · 目的地 千问 API`);$('#chat-preview').hidden=false;}catch(_){text($('#chat-status'),'无法生成预览，请检查云端设置、Key 和输入。');}});
+$('#cancel-chat').addEventListener('click',()=>{chatState.plan=null;$('#chat-preview').hidden=true;text($('#chat-status'),'已取消，没有发送。');});
+$('#confirm-chat').addEventListener('click',async()=>{if(!chatState.plan)return;const plan=chatState.plan;chatState.plan=null;$('#chat-preview').hidden=true;chatState.controller=new AbortController();$('#cancel-stream').disabled=false;const pending=renderChatMessage({role:'assistant',status:'pending',content:''});const body=pending.querySelector('span:not(.message-meta)');try{const response=await fetch('/api/v1/ai/chat/execute',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({plan_id:plan.plan_id,execution_token:plan.execution_token}),signal:chatState.controller.signal});if(!response.ok)throw new Error();const reader=response.body.getReader();const decoder=new TextDecoder();let buffer='';while(true){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const blocks=buffer.split('\n\n');buffer=blocks.pop();for(const block of blocks){const event=block.match(/^event: (.+)$/m)?.[1];const raw=block.match(/^data: (.+)$/m)?.[1];if(!event||!raw)continue;const data=JSON.parse(raw);if(event==='delta')body.textContent+=data.text;if(event==='done'){pending.querySelector('.message-meta').textContent=`AI 生成，可能不准确 · ${data.status}`;text($('#chat-status'),data.status==='incomplete'?`回答不完整（达到输出限制）· 估算费用 ${data.cost.estimated_cost} ${data.cost.currency}`:`完成 · 估算费用 ${data.cost.estimated_cost} ${data.cost.currency}`);}if(event==='error'){pending.querySelector('.message-meta').textContent=`AI 生成，可能不准确 · ${data.status}`;text($('#chat-status'),data.message);}}}await openConversation(chatState.conversationId);await loadConversations();}catch(error){text($('#chat-status'),error.name==='AbortError'?'已取消生成；未标记为完成。':'网络错误；草稿仍保留，可手动重试。');}finally{$('#cancel-stream').disabled=true;chatState.controller=null;}});
+$('#cancel-stream').addEventListener('click',()=>chatState.controller?.abort());
+$('#chat-messages').addEventListener('click',event=>{if(!event.target.dataset.saveMessageId)return;chatState.saveMessageId=Number(event.target.dataset.saveMessageId);$('#save-ai-text').value=event.target.dataset.saveText;$('#save-ai-panel').hidden=false;});
+$('#cancel-save-ai').addEventListener('click',()=>{$('#save-ai-panel').hidden=true;chatState.saveMessageId=null;});
+$('#confirm-save-ai').addEventListener('click',async()=>{try{const result=await post('/api/v1/ai/chat/save',{message_id:chatState.saveMessageId,entry_type:$('#save-ai-type').value,text:$('#save-ai-text').value,confirmed:true});text($('#chat-status'),result.duplicate?'相同内容已存在，请选择合并或取消；未重复创建。':'已确认保存到学习库。');$('#save-ai-panel').hidden=true;}catch(_){text($('#chat-status'),'保存失败，请检查类型和内容。');}});

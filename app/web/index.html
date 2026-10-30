@@ -12,7 +12,7 @@
   <main>
     <header>
       <div><h1>SceneLingo</h1><p id="service-status" role="status">正在检查服务状态…</p></div>
-      <nav><button id="show-library" type="button">字幕库</button> <button id="show-vocabulary" type="button">学习库</button> <button id="show-review" type="button">复习</button> <button id="show-settings" type="button">设置</button> <button id="back-to-library" type="button" hidden>返回字幕库</button></nav>
+      <nav><button id="show-library" type="button">字幕库</button> <button id="show-vocabulary" type="button">学习库</button> <button id="show-review" type="button">复习</button> <button id="show-chat" type="button">AI Tutor</button> <button id="show-settings" type="button">设置</button> <button id="back-to-library" type="button" hidden>返回字幕库</button></nav>
     </header>
     <section id="subtitle-library" aria-labelledby="library-title">
       <h2 id="library-title">字幕库</h2>
@@ -39,8 +39,18 @@
       <form id="vocabulary-controls"><label>搜索词形 <input id="vocabulary-search" type="search"></label><label>排序 <select id="vocabulary-sort"><option value="created_at">加入时间</option><option value="frequency">词次</option><option value="alphabetical">字母</option></select></label><button type="submit">查询</button></form>
       <p id="vocabulary-message" role="status"></p><div id="vocabulary-list"></div>
     </section>
-    <section id="vocabulary-detail" hidden><button id="back-to-vocabulary" type="button">返回学习库</button><h2 id="word-title"></h2><button id="play-word" type="button">朗读单词</button> <button class="stop-speech" type="button">停止朗读</button><p id="speech-message" role="status"></p><dl id="word-fields"></dl><h3>来源语境</h3><div id="context-list"></div><h3>复习历史</h3><div id="review-history"></div></section>
+    <section id="vocabulary-detail" hidden><button id="back-to-vocabulary" type="button">返回学习库</button><h2 id="word-title"></h2><button id="play-word" type="button">朗读单词</button> <button id="ask-word-ai" type="button">用 AI 学习此词</button> <button class="stop-speech" type="button">停止朗读</button><p id="speech-message" role="status"></p><dl id="word-fields"></dl><h3>来源语境</h3><div id="context-list"></div><h3>复习历史</h3><div id="review-history"></div></section>
     <section id="review-panel" hidden><h2>复习</h2><label>模式 <select id="review-mode"><option value="spelling">拼写</option><option value="meaning">词义回忆</option></select></label><button id="load-review" type="button">加载到期队列</button><p id="review-message" role="status"></p><div id="review-card" hidden><p id="review-prompt"></p><label>拼写答案 <input id="review-input" autocomplete="off" autocorrect="off"></label><fieldset><legend>最终评分</legend><label><input type="radio" name="rating" value="good" checked>记得</label><label><input type="radio" name="rating" value="hard">模糊</label><label><input type="radio" name="rating" value="again">忘记</label></fieldset><button id="submit-review" type="button">确认并保存</button></div></section>
+    <section id="chat-panel" hidden><h2>AI Tutor</h2><p>AI 生成，可能不准确。只有预览确认后才会发送。</p>
+      <div class="chat-layout"><aside><button id="new-chat" type="button">新建会话</button><div id="conversation-list"></div></aside>
+      <div><p id="chat-context">未引用字幕或词条</p><button id="remove-chat-context" type="button" hidden>移除引用</button><div id="chat-messages" aria-live="polite"></div>
+      <label>任务 <select id="chat-template"><option value="free">自由问答</option><option value="grammar">语法解释</option><option value="rewrite">重新造句</option><option value="story">生词短文</option><option value="correction">英文纠错</option></select></label>
+      <label><input id="chat-history" type="checkbox"> 携带最近 2 条完整消息</label>
+      <label>你的问题 <textarea id="chat-input" maxlength="4000"></textarea></label><button id="preview-chat" type="button">预览发送内容</button><button id="cancel-stream" type="button" disabled>取消生成</button>
+      <div id="chat-preview" hidden><h3>发送预览</h3><pre id="chat-preview-content"></pre><p id="chat-preview-meta"></p><button id="confirm-chat" type="button">确认并发送</button><button id="cancel-chat" type="button">取消</button></div><p id="chat-status" role="status"></p>
+      <div id="save-ai-panel" hidden><h3>保存 AI 内容</h3><label>类型 <select id="save-ai-type"><option value="word">单词</option><option value="phrase">短语</option><option value="sentence">句子</option><option value="note">笔记</option></select></label><label>保存前可编辑 <textarea id="save-ai-text" maxlength="4000"></textarea></label><button id="confirm-save-ai" type="button">确认保存</button><button id="cancel-save-ai" type="button">取消</button></div>
+      </div></div>
+    </section>
     <section id="settings-panel" hidden><h2>设置</h2><p>本地学习功能无需网络。云端只会在你预览并确认后发送当前输入。</p><p id="network-state" role="status"></p>
       <div id="ai-settings"><h3>千问云端功能</h3><p id="ai-status" role="status"></p>
       <label><input id="cloud-enabled" type="checkbox"> 启用云端功能</label>

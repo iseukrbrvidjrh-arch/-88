@@ -163,6 +163,59 @@ def _create_ai_gateway_tables(session: MigrationSession) -> None:
     )""")
 
 
+def _create_ai_chat_tables(session: MigrationSession) -> None:
+    session.execute("""CREATE TABLE ai_conversation (
+        id INTEGER PRIMARY KEY,
+        title TEXT NOT NULL CHECK(length(trim(title)) > 0),
+        started_at TEXT NOT NULL,
+        last_message_at TEXT,
+        deleted_at TEXT
+    )""")
+    session.execute("""CREATE TABLE ai_message (
+        id INTEGER PRIMARY KEY,
+        conversation_id INTEGER NOT NULL REFERENCES ai_conversation(id) ON DELETE CASCADE,
+        sequence INTEGER NOT NULL CHECK(sequence >= 1),
+        role TEXT NOT NULL CHECK(role IN ('user','assistant')),
+        content TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('pending','complete','incomplete','failed','cancelled')),
+        model_id TEXT,
+        request_id TEXT UNIQUE,
+        error_code TEXT,
+        created_at TEXT NOT NULL,
+        completed_at TEXT,
+        UNIQUE(conversation_id, sequence)
+    )""")
+    session.execute("CREATE INDEX idx_ai_message_conversation ON ai_message(conversation_id,sequence)")
+    session.execute("""CREATE TABLE ai_message_context (
+        id INTEGER PRIMARY KEY,
+        message_id INTEGER NOT NULL REFERENCES ai_message(id) ON DELETE CASCADE,
+        ref_type TEXT NOT NULL CHECK(ref_type IN ('cue','learning_item','history_message')),
+        cue_id INTEGER REFERENCES cue(id) ON DELETE SET NULL,
+        learning_item_id INTEGER REFERENCES learning_item(id) ON DELETE SET NULL,
+        history_message_id INTEGER REFERENCES ai_message(id) ON DELETE SET NULL,
+        text_snapshot TEXT NOT NULL
+    )""")
+    # V6 was released without chat purpose and message links; rebuild without editing V6.
+    session.execute("ALTER TABLE cost_record RENAME TO cost_record_v6")
+    session.execute("""CREATE TABLE cost_record (
+        id INTEGER PRIMARY KEY, request_id TEXT NOT NULL UNIQUE,
+        conversation_id INTEGER REFERENCES ai_conversation(id) ON DELETE SET NULL,
+        message_id INTEGER REFERENCES ai_message(id) ON DELETE SET NULL,
+        purpose TEXT NOT NULL CHECK(purpose IN ('chat','translation','definition','context_explanation')),
+        model_id TEXT NOT NULL, input_tokens INTEGER, output_tokens INTEGER,
+        usage_source TEXT CHECK(usage_source IS NULL OR usage_source IN ('api','estimated_chars')),
+        estimated_cost TEXT, currency TEXT NOT NULL, price_version TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('success','failed','cancelled')),
+        created_at TEXT NOT NULL,
+        CHECK(status <> 'success' OR (usage_source IS NOT NULL AND estimated_cost IS NOT NULL))
+    )""")
+    session.execute("""INSERT INTO cost_record
+        (id,request_id,purpose,model_id,input_tokens,output_tokens,usage_source,estimated_cost,currency,price_version,status,created_at)
+        SELECT id,request_id,purpose,model_id,input_tokens,output_tokens,usage_source,estimated_cost,currency,price_version,status,created_at
+        FROM cost_record_v6""")
+    session.execute("DROP TABLE cost_record_v6")
+
+
 MIGRATIONS = (
     Migration(1, "Initialize storage baseline without business tables", _initialize_storage),
     Migration(2, "Create subtitle, cue and subtitle token tables", _create_subtitle_tables),
@@ -170,4 +223,5 @@ MIGRATIONS = (
     Migration(4, "Create vocabulary items, contexts and initial review state", _create_vocabulary_tables),
     Migration(5, "Create immutable idempotent review attempt history", _create_review_attempts),
     Migration(6, "Create AI result cache, cost ledger and non-secret settings", _create_ai_gateway_tables),
+    Migration(7, "Create AI Tutor conversations, messages, contexts and chat cost links", _create_ai_chat_tables),
 )

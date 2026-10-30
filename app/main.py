@@ -22,6 +22,7 @@ from app.api.vocabulary import router as vocabulary_router
 from app.api.review import router as review_router
 from app.api.speech import router as speech_router
 from app.api.ai import router as ai_router
+from app.api.chat import router as chat_router
 from app.core.errors import ApplicationError
 from app.core.config import DEFAULT_PORT, ConfigError, Settings, load_settings, prepare_data_dir
 from app.core.logging import close_logger, open_logger
@@ -33,6 +34,7 @@ from app.integrations.macos_tts import MacOSTTS
 from app.integrations.keychain import MacOSKeychain
 from app.integrations.qwen_gateway import QwenGateway
 from app.services.ai_send_plan import SendPlanService
+from app.services.chat import ChatService
 
 
 WEB_DIR = Path(__file__).parent / "web"
@@ -83,6 +85,8 @@ def create_app(settings: Settings | None = None,
                 settings.qwen_max_output_tokens, settings.qwen_max_response_bytes)
             app.state.ai_service = SendPlanService(database, app.state.qwen_gateway,
                 app.state.secret_store, model=settings.qwen_model, clock=app.state.clock)
+            app.state.chat_service = ChatService(database,app.state.ai_service,app.state.qwen_gateway,
+                app.state.secret_store,app.state.clock)
             app.state.data_dir_ready = True
             app.state.token = new_token()
             logger.info("database_ready", extra={
@@ -165,6 +169,7 @@ def create_app(settings: Settings | None = None,
     app.include_router(review_router)
     app.include_router(speech_router)
     app.include_router(ai_router)
+    app.include_router(chat_router)
     app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
     return app
 

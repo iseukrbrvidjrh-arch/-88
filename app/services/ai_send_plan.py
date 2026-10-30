@@ -32,6 +32,7 @@ class Plan:
     id: str; token_hash: str; kind: str; text: str; context: str
     target_language: str; model: str; messages_json: str
     content_hash: str; created_at: datetime; expires_at: datetime
+    metadata_json: str = "{}"
 
 
 class SendPlanService:
@@ -65,31 +66,38 @@ class SendPlanService:
         if kind not in KINDS: raise ApplicationError("ai_kind_invalid","不支持的 AI 任务类型。")
         text=" ".join(text.split()); context=" ".join(context.split())
         if not text or len(text)>4000 or len(context)>4000: raise ApplicationError("ai_input_invalid","发送文本为空或过长。")
-        enabled, consent, model=self._settings()
+        user=text if not context else f"目标：{text}\n当前语境：{context}"
+        messages=[{"role":"system","content":INSTRUCTIONS[kind]},{"role":"user","content":user}]
+        return self.create_messages(kind,text,messages,context=context,history_count=0,attachments=[])
+
+    def create_messages(self,kind,text,messages,*,context="",history_count=0,attachments=None,metadata=None):
+        if kind!="chat" and kind not in KINDS: raise ApplicationError("ai_kind_invalid","不支持的 AI 任务类型。")
+        enabled,consent,model=self._settings()
         if not enabled: raise ApplicationError("cloud_disabled","云端功能已关闭。",status_code=409)
         if not consent: raise ApplicationError("cloud_consent_required","请先阅读数据边界并同意云端发送。",status_code=409)
         if not self.secret_store.configured(): raise ApplicationError("api_key_not_configured","请先配置千问 API Key。",status_code=409)
-        user=text if not context else f"目标：{text}\n当前语境：{context}"
-        messages=[{"role":"system","content":INSTRUCTIONS[kind]},{"role":"user","content":user}]
         snapshot=json.dumps(messages,ensure_ascii=False,separators=(",",":"))
         now=self.clock(); token=secrets.token_urlsafe(32); pid=uuid4().hex
         digest=hashlib.sha256(snapshot.encode()).hexdigest()
-        plan=Plan(pid,hashlib.sha256(token.encode()).hexdigest(),kind,text,context,"zh-CN",model,snapshot,digest,now,now+PLAN_TTL)
+        plan=Plan(pid,hashlib.sha256(token.encode()).hexdigest(),kind,text,context,"zh-CN",model,snapshot,digest,now,now+PLAN_TTL,
+                  json.dumps(metadata or {},ensure_ascii=False,separators=(",",":")))
         with self._lock: self._plans[pid]=plan
         return {"plan_id":pid,"execution_token":token,"expires_at":plan.expires_at.isoformat(),"destination":"千问 API",
-                "model":model,"history_count":0,"attachments":[],"actual_content":messages,"content_hash":digest,
+                "model":model,"history_count":history_count,"attachments":attachments or [],"actual_content":messages,"content_hash":digest,
                 "estimated_cost_notice":"实际费用以供应商账单为准；成功后按 usage 或字符估算。"}
 
-    def execute(self, plan_id, token):
-        with self._lock:
-            plan=self._plans.pop(plan_id,None)
+    def consume(self,plan_id,token):
+        with self._lock: plan=self._plans.pop(plan_id,None)
         if plan is None: raise ApplicationError("send_plan_used_or_missing","发送计划不存在或已使用。",status_code=409)
         if not secrets.compare_digest(plan.token_hash,hashlib.sha256(token.encode()).hexdigest()):
             raise ApplicationError("send_plan_token_invalid","发送计划令牌无效。",status_code=409)
         if self.clock()>plan.expires_at: raise ApplicationError("send_plan_expired","发送计划已过期，请重新预览。",status_code=409)
-        messages=json.loads(plan.messages_json)
         if hashlib.sha256(plan.messages_json.encode()).hexdigest()!=plan.content_hash:
             raise ApplicationError("send_plan_changed","发送计划已改变，请重新预览。",status_code=409)
+        return plan,json.loads(plan.messages_json),json.loads(plan.metadata_json)
+
+    def execute(self, plan_id, token):
+        plan,messages,_=self.consume(plan_id,token)
         cache_key=self._cache_key(plan)
         with self.database.connection() as conn:
             cached=AiRepository(conn).cached(cache_key)
