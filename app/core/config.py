@@ -8,6 +8,8 @@ import tempfile
 
 DEFAULT_PORT = 8765
 DEFAULT_DATA_DIR = Path.home() / "Library" / "Application Support" / "SceneLingo"
+DEFAULT_QWEN_MODEL = "qwen3.8-max"
+DEFAULT_QWEN_BASE_URL = "https://maas.qianwenaiapi.com/compatible-mode/v1"
 
 
 class ConfigError(ValueError):
@@ -20,6 +22,11 @@ class Settings:
     data_dir: Path = DEFAULT_DATA_DIR
     db_path: Path | None = None
     log_level: str = "INFO"
+    qwen_model: str = DEFAULT_QWEN_MODEL
+    qwen_base_url: str = DEFAULT_QWEN_BASE_URL
+    qwen_timeout_seconds: float = 30.0
+    qwen_max_output_tokens: int = 800
+    qwen_max_response_bytes: int = 1_000_000
 
     def __post_init__(self) -> None:
         if isinstance(self.port, bool) or not isinstance(self.port, int) or not 1 <= self.port <= 65535:
@@ -27,6 +34,16 @@ class Settings:
         if not isinstance(self.log_level, str) or self.log_level.upper() not in {"DEBUG", "INFO", "WARNING", "ERROR"}:
             raise ConfigError("日志级别必须是 DEBUG、INFO、WARNING 或 ERROR。")
         object.__setattr__(self, "log_level", self.log_level.upper())
+        if not self.qwen_model or len(self.qwen_model) > 100:
+            raise ConfigError("千问模型标识无效。")
+        if not self.qwen_base_url.startswith("https://") or not self.qwen_base_url.rstrip("/").endswith("/compatible-mode/v1"):
+            raise ConfigError("千问 API 地址必须是 HTTPS 的 compatible-mode/v1 地址。")
+        if not 1 <= self.qwen_timeout_seconds <= 120:
+            raise ConfigError("千问超时必须为 1–120 秒。")
+        if not 1 <= self.qwen_max_output_tokens <= 4096:
+            raise ConfigError("千问输出限制必须为 1–4096 token。")
+        if not 1024 <= self.qwen_max_response_bytes <= 10_000_000:
+            raise ConfigError("千问响应大小限制无效。")
         if not isinstance(self.data_dir, Path):
             raise ConfigError("数据目录必须是有效路径。")
         if not self.data_dir.is_absolute():
@@ -55,8 +72,18 @@ def load_settings(*, port: str | None = None, data_dir: str | None = None,
     raw_db = db_path if db_path is not None else os.environ.get("SCENELINGO_DB_PATH")
     resolved_db = Path(raw_db).expanduser() if raw_db else None
     raw_level = log_level if log_level is not None else os.environ.get("SCENELINGO_LOG_LEVEL", "INFO")
+    try:
+        timeout = float(os.environ.get("SCENELINGO_QWEN_TIMEOUT", "30"))
+        max_tokens = int(os.environ.get("SCENELINGO_QWEN_MAX_OUTPUT_TOKENS", "800"))
+        max_bytes = int(os.environ.get("SCENELINGO_QWEN_MAX_RESPONSE_BYTES", "1000000"))
+    except ValueError as exc:
+        raise ConfigError("千问数值配置无效。") from exc
     return Settings(port=parsed_port, data_dir=resolved_dir, db_path=resolved_db,
-                    log_level=raw_level.upper())
+                    log_level=raw_level.upper(),
+                    qwen_model=os.environ.get("SCENELINGO_QWEN_MODEL", DEFAULT_QWEN_MODEL),
+                    qwen_base_url=os.environ.get("SCENELINGO_QWEN_BASE_URL", DEFAULT_QWEN_BASE_URL),
+                    qwen_timeout_seconds=timeout, qwen_max_output_tokens=max_tokens,
+                    qwen_max_response_bytes=max_bytes)
 
 
 def prepare_data_dir(data_dir: Path) -> Path:

@@ -107,7 +107,7 @@ def test_restart_history_projection_consistency(tmp_path):
     assert history["total"]==2 and state==sum(bool(row["is_success"]) for row in history["items"])
 
 def test_v5_migrates_v4_with_backup(tmp_path):
-    db=Database(tmp_path/"data/scenelingo.db"); initialize_database(db,migrations=MIGRATIONS[:4]); result=initialize_database(db)
+    db=Database(tmp_path/"data/scenelingo.db"); initialize_database(db,migrations=MIGRATIONS[:4]); result=initialize_database(db,migrations=MIGRATIONS[:5])
     assert result.applied_versions==(5,) and result.backup_path is not None
     with sqlite3.connect(result.backup_path) as backup: assert backup.execute("PRAGMA user_version").fetchone()[0]==4
 

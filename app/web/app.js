@@ -152,7 +152,7 @@ $('#back-to-library').addEventListener('click', loadLibrary);
 $('#show-library').addEventListener('click', loadLibrary);
 $('#show-vocabulary').addEventListener('click', loadVocabulary);
 $('#show-review').addEventListener('click', () => showOnly('#review-panel'));
-$('#show-settings').addEventListener('click', () => showOnly('#settings-panel'));
+$('#show-settings').addEventListener('click', () => { showOnly('#settings-panel'); loadAiSettings(); });
 $('#back-to-vocabulary').addEventListener('click', loadVocabulary);
 $('#vocabulary-controls').addEventListener('submit', (event) => { event.preventDefault(); loadVocabulary(); });
 $('#candidate-list').addEventListener('click', async (event) => {
@@ -209,3 +209,15 @@ api('/api/v1/system/info')
 loadLibrary();
 function updateNetworkState() { text($('#network-state'),navigator.onLine?'当前可联网；本地功能不依赖网络。':'当前离线；字幕、学习库和复习仍可使用。'); }
 window.addEventListener('online',updateNetworkState); window.addEventListener('offline',updateNetworkState); updateNetworkState();
+
+let aiPlan = null;
+async function loadAiSettings() {
+  try { const data=await api('/api/v1/ai/settings'); $('#cloud-enabled').checked=data.cloud_enabled; $('#cloud-consent').checked=data.consent_accepted; $('#cloud-model').value=data.model; text($('#ai-status'),`Key：${data.key_status==='configured'?'已配置（已掩码）':'未配置'} · 云端：${data.cloud_enabled?'已启用':'已关闭'}`); }
+  catch (_) { text($('#ai-status'),'云端设置读取失败；本地功能不受影响。'); }
+}
+$('#save-ai-settings').addEventListener('click',async()=>{ try { await fetch('/api/v1/ai/settings',{method:'PUT',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({cloud_enabled:$('#cloud-enabled').checked,consent_accepted:$('#cloud-consent').checked,model:$('#cloud-model').value})}).then(r=>{if(!r.ok)throw new Error();return r.json();}); await loadAiSettings(); } catch (_) { text($('#ai-status'),'设置保存失败。'); } });
+$('#save-api-key').addEventListener('click',async()=>{ try { await fetch('/api/v1/ai/key',{method:'PUT',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({key:$('#api-key').value})}).then(r=>{if(!r.ok)throw new Error();return r.json();}); $('#api-key').value=''; await loadAiSettings(); } catch (_) { $('#api-key').value=''; text($('#ai-status'),'Key 未保存，请检查 Keychain。'); } });
+$('#delete-api-key').addEventListener('click',async()=>{ try { await fetch('/api/v1/ai/key',{method:'DELETE',headers:{...headers,'Content-Type':'application/json'}}).then(r=>{if(!r.ok)throw new Error();}); await loadAiSettings(); } catch (_) { text($('#ai-status'),'Key 删除失败。'); } });
+$('#preview-ai').addEventListener('click',async()=>{ try { aiPlan=await post('/api/v1/ai/send-plans',{kind:$('#ai-kind').value,text:$('#ai-text').value,context:$('#ai-context').value}); text($('#ai-preview-content'),JSON.stringify(aiPlan.actual_content,null,2)); $('#ai-preview').hidden=false; text($('#ai-result'),'请逐项检查以上内容；确认后才会联网。'); } catch (_) { text($('#ai-result'),'无法生成预览：请检查云端同意、开关与 Key。'); } });
+$('#cancel-ai').addEventListener('click',()=>{aiPlan=null;$('#ai-preview').hidden=true;text($('#ai-result'),'已取消，没有发送。');});
+$('#confirm-ai').addEventListener('click',async()=>{ if(!aiPlan)return; const current=aiPlan; aiPlan=null; $('#ai-preview').hidden=true; try { const result=await post('/api/v1/ai/execute',{plan_id:current.plan_id,execution_token:current.execution_token}); text($('#ai-result'),`${result.result}\n来源：${result.source==='local_cache'?'本地缓存':'千问 API'} · 模型：${result.model}`); } catch (_) { text($('#ai-result'),'千问调用失败；没有自动重试，本地功能仍可使用。'); } });

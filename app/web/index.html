@@ -41,7 +41,16 @@
     </section>
     <section id="vocabulary-detail" hidden><button id="back-to-vocabulary" type="button">返回学习库</button><h2 id="word-title"></h2><button id="play-word" type="button">朗读单词</button> <button class="stop-speech" type="button">停止朗读</button><p id="speech-message" role="status"></p><dl id="word-fields"></dl><h3>来源语境</h3><div id="context-list"></div><h3>复习历史</h3><div id="review-history"></div></section>
     <section id="review-panel" hidden><h2>复习</h2><label>模式 <select id="review-mode"><option value="spelling">拼写</option><option value="meaning">词义回忆</option></select></label><button id="load-review" type="button">加载到期队列</button><p id="review-message" role="status"></p><div id="review-card" hidden><p id="review-prompt"></p><label>拼写答案 <input id="review-input" autocomplete="off" autocorrect="off"></label><fieldset><legend>最终评分</legend><label><input type="radio" name="rating" value="good" checked>记得</label><label><input type="radio" name="rating" value="hard">模糊</label><label><input type="radio" name="rating" value="again">忘记</label></fieldset><button id="submit-review" type="button">确认并保存</button></div></section>
-    <section id="settings-panel" hidden><h2>设置</h2><p>本地学习功能无需网络。云端服务配置将在后续任务中提供。</p><p id="network-state" role="status"></p></section>
+    <section id="settings-panel" hidden><h2>设置</h2><p>本地学习功能无需网络。云端只会在你预览并确认后发送当前输入。</p><p id="network-state" role="status"></p>
+      <div id="ai-settings"><h3>千问云端功能</h3><p id="ai-status" role="status"></p>
+      <label><input id="cloud-enabled" type="checkbox"> 启用云端功能</label>
+      <label><input id="cloud-consent" type="checkbox"> 我理解发送内容将交给千问 API 处理；默认不含完整字幕、历史或学习数据库</label>
+      <label>模型 <input id="cloud-model" value="qwen3.8-max"></label><button id="save-ai-settings" type="button">保存设置</button>
+      <label>API Key（仅写入 macOS Keychain） <input id="api-key" type="password" autocomplete="off"></label><button id="save-api-key" type="button">保存 Key</button><button id="delete-api-key" type="button">删除 Key</button></div>
+      <div id="ai-tools"><h3>翻译与解释</h3><label>任务 <select id="ai-kind"><option value="translation">句子翻译</option><option value="definition">词汇释义</option><option value="context_explanation">语境解释</option></select></label>
+      <label>目标文本 <textarea id="ai-text" maxlength="4000"></textarea></label><label>当前语境（可选） <textarea id="ai-context" maxlength="4000"></textarea></label><button id="preview-ai" type="button">生成发送预览</button>
+      <div id="ai-preview" hidden><h4>实际发送内容</h4><pre id="ai-preview-content"></pre><p>目的地：千问 API；历史：0；附件：0</p><button id="confirm-ai" type="button">确认发送</button><button id="cancel-ai" type="button">取消</button></div><p id="ai-result" role="status"></p></div>
+    </section>
   </main>
 </body>
 </html>

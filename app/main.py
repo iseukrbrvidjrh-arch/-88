@@ -21,6 +21,7 @@ from app.api.subtitles import router as subtitles_router
 from app.api.vocabulary import router as vocabulary_router
 from app.api.review import router as review_router
 from app.api.speech import router as speech_router
+from app.api.ai import router as ai_router
 from app.core.errors import ApplicationError
 from app.core.config import DEFAULT_PORT, ConfigError, Settings, load_settings, prepare_data_dir
 from app.core.logging import close_logger, open_logger
@@ -29,6 +30,9 @@ from app.repositories.database import Database, StorageError
 from app.repositories.migrations.runner import MigrationResult, initialize_database
 from app.integrations.ipa_dictionary import LocalIpaDictionary
 from app.integrations.macos_tts import MacOSTTS
+from app.integrations.keychain import MacOSKeychain
+from app.integrations.qwen_gateway import QwenGateway
+from app.services.ai_send_plan import SendPlanService
 
 
 WEB_DIR = Path(__file__).parent / "web"
@@ -45,7 +49,8 @@ def error_response(status: int, code: str, message: str,
 
 def create_app(settings: Settings | None = None,
                clock: Callable[[], datetime] | None = None,
-               startup_storage: tuple[Database, MigrationResult] | None = None) -> FastAPI:
+               startup_storage: tuple[Database, MigrationResult] | None = None,
+               secret_store=None, qwen_gateway=None) -> FastAPI:
     settings = settings or load_settings()
 
     @asynccontextmanager
@@ -72,6 +77,12 @@ def create_app(settings: Settings | None = None,
             app.state.database = database
             app.state.ipa_dictionary = LocalIpaDictionary(IPA_PATH)
             app.state.tts = MacOSTTS(settings.data_dir / "temp" / "tts")
+            app.state.secret_store = secret_store or MacOSKeychain()
+            app.state.qwen_gateway = qwen_gateway or QwenGateway(
+                settings.qwen_base_url, settings.qwen_timeout_seconds,
+                settings.qwen_max_output_tokens, settings.qwen_max_response_bytes)
+            app.state.ai_service = SendPlanService(database, app.state.qwen_gateway,
+                app.state.secret_store, model=settings.qwen_model, clock=app.state.clock)
             app.state.data_dir_ready = True
             app.state.token = new_token()
             logger.info("database_ready", extra={
@@ -153,6 +164,7 @@ def create_app(settings: Settings | None = None,
     app.include_router(vocabulary_router)
     app.include_router(review_router)
     app.include_router(speech_router)
+    app.include_router(ai_router)
     app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
     return app
 

@@ -138,10 +138,36 @@ def _create_review_attempts(session: MigrationSession) -> None:
     session.execute("CREATE INDEX idx_review_item_date ON review_attempt(learning_item_id, attempted_at DESC)")
 
 
+def _create_ai_gateway_tables(session: MigrationSession) -> None:
+    session.execute("""CREATE TABLE ai_cache (
+        id INTEGER PRIMARY KEY, cache_key TEXT NOT NULL UNIQUE,
+        cache_type TEXT NOT NULL CHECK(cache_type IN ('word_definition','sentence_translation','context_explanation')),
+        source_text TEXT NOT NULL, context_hash TEXT NOT NULL DEFAULT '',
+        target_language TEXT NOT NULL, result_text TEXT NOT NULL,
+        model_id TEXT, prompt_version TEXT NOT NULL,
+        created_at TEXT NOT NULL, refreshed_at TEXT NOT NULL
+    )""")
+    session.execute("""CREATE TABLE cost_record (
+        id INTEGER PRIMARY KEY, request_id TEXT NOT NULL UNIQUE,
+        purpose TEXT NOT NULL CHECK(purpose IN ('translation','definition','context_explanation')),
+        model_id TEXT NOT NULL, input_tokens INTEGER, output_tokens INTEGER,
+        usage_source TEXT CHECK(usage_source IS NULL OR usage_source IN ('api','estimated_chars')),
+        estimated_cost TEXT, currency TEXT NOT NULL,
+        price_version TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('success','failed','cancelled')),
+        created_at TEXT NOT NULL,
+        CHECK(status <> 'success' OR (usage_source IS NOT NULL AND estimated_cost IS NOT NULL))
+    )""")
+    session.execute("""CREATE TABLE app_setting (
+        key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL
+    )""")
+
+
 MIGRATIONS = (
     Migration(1, "Initialize storage baseline without business tables", _initialize_storage),
     Migration(2, "Create subtitle, cue and subtitle token tables", _create_subtitle_tables),
     Migration(3, "Persist skipped invalid cue count with legacy unknown semantics", _add_invalid_cue_count),
     Migration(4, "Create vocabulary items, contexts and initial review state", _create_vocabulary_tables),
     Migration(5, "Create immutable idempotent review attempt history", _create_review_attempts),
+    Migration(6, "Create AI result cache, cost ledger and non-secret settings", _create_ai_gateway_tables),
 )
