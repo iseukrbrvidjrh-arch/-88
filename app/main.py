@@ -20,15 +20,19 @@ from app.api.system import router
 from app.api.subtitles import router as subtitles_router
 from app.api.vocabulary import router as vocabulary_router
 from app.api.review import router as review_router
+from app.api.speech import router as speech_router
 from app.core.errors import ApplicationError
 from app.core.config import DEFAULT_PORT, ConfigError, Settings, load_settings, prepare_data_dir
 from app.core.logging import close_logger, open_logger
 from app.core.security import SECURITY_HEADERS, check_request, new_token
 from app.repositories.database import Database, StorageError
 from app.repositories.migrations.runner import MigrationResult, initialize_database
+from app.integrations.ipa_dictionary import LocalIpaDictionary
+from app.integrations.macos_tts import MacOSTTS
 
 
 WEB_DIR = Path(__file__).parent / "web"
+IPA_PATH = Path(__file__).parent / "data" / "ipa" / "en_US.txt"
 
 
 def error_response(status: int, code: str, message: str,
@@ -66,6 +70,8 @@ def create_app(settings: Settings | None = None,
                 })
                 raise
             app.state.database = database
+            app.state.ipa_dictionary = LocalIpaDictionary(IPA_PATH)
+            app.state.tts = MacOSTTS(settings.data_dir / "temp" / "tts")
             app.state.data_dir_ready = True
             app.state.token = new_token()
             logger.info("database_ready", extra={
@@ -78,6 +84,8 @@ def create_app(settings: Settings | None = None,
             logger.info("startup", extra={"operation": "startup"})
             yield
         finally:
+            if hasattr(app.state, "tts"):
+                app.state.tts.stop()
             logger.info("shutdown", extra={"operation": "shutdown"})
             close_logger(logger)
             app.state.token = None
@@ -144,6 +152,7 @@ def create_app(settings: Settings | None = None,
     app.include_router(subtitles_router)
     app.include_router(vocabulary_router)
     app.include_router(review_router)
+    app.include_router(speech_router)
     app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
     return app
 

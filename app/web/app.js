@@ -64,6 +64,7 @@ async function loadDetail() {
       const item = document.createElement('li'); item.id = `cue-${cue.id}`;
       const timeline = document.createElement('span'); timeline.className = 'timeline'; text(timeline, `#${cue.sequence}  ${cue.start_time} → ${cue.end_time}`);
       const content = document.createElement('span'); text(content, cue.text); item.append(timeline, content); list.append(item);
+      const play=document.createElement('button'); play.type='button'; play.dataset.speechText=cue.text; play.dataset.speechTarget='sentence'; text(play,'朗读句子'); item.append(play);
     });
     text($('#detail-message'), data.cues.length ? '' : '本页没有 cue。');
     text($('#cue-page'), `第 ${data.page} 页 · 共 ${data.total} 条`);
@@ -106,8 +107,10 @@ async function loadVocabulary() {
 async function loadWord(itemId) {
   try {
     const word = await api(`/api/v1/vocabulary/${itemId}`); showOnly('#vocabulary-detail'); text($('#word-title'), word.display_text);
+    const ipa=await api(`/api/v1/pronunciation?word=${encodeURIComponent(word.dedupe_key)}`);
+    $('#play-word').dataset.speechText=word.display_text; $('#play-word').dataset.speechTarget='word';
     const fields = $('#word-fields'); fields.replaceChildren();
-    [['状态', '待学习'], ['IPA', word.ipa_display], ['释义', word.definition_display], ['下次复习', word.next_review_display], ['复习历史', word.review_history_display]].forEach(([name, value]) => {
+    [['状态', '待学习'], ['IPA', ipa.display], ['音标来源', ipa.found ? `${ipa.source} · ${ipa.accent}` : '本地未收录'], ['释义', word.definition_display], ['下次复习', word.next_review_display], ['复习历史', word.review_history_display]].forEach(([name, value]) => {
       const term = document.createElement('dt'); const description = document.createElement('dd'); text(term, name); text(description, value); fields.append(term, description);
     });
     const contexts = $('#context-list'); contexts.replaceChildren();
@@ -167,6 +170,13 @@ $('#context-list').addEventListener('click', async (event) => {
     state.detailPage = Math.ceil(located.target.sequence / 50); await loadDetail();
     document.querySelector(`#cue-${event.target.dataset.cueId}`)?.scrollIntoView({ block: 'center' });
   } catch (_) { text($('#vocabulary-message'), '来源定位失败。'); }
+});
+document.addEventListener('click',async(event)=>{
+  if (event.target.dataset.speechText) {
+    try { const result=await post('/api/v1/speech/play',{text:event.target.dataset.speechText,target:event.target.dataset.speechTarget}); text($('#speech-message'),`正在本地朗读（${result.character_count} 字符）`); }
+    catch (_) { text($('#speech-message'),'本地语音不可用或播放失败。'); }
+  }
+  if (event.target.classList.contains('stop-speech')) { try { await post('/api/v1/speech/stop',{}); text($('#speech-message'),'朗读已停止。'); } catch (_) { text($('#speech-message'),'停止朗读失败。'); } }
 });
 $('#subtitle-upload').addEventListener('submit', async (event) => {
   event.preventDefault(); const file=$('#subtitle-file').files[0]; if (!file) return;

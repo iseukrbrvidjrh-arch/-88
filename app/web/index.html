@@ -29,6 +29,7 @@
     </section>
     <section id="subtitle-detail" aria-labelledby="detail-title" hidden>
       <h2 id="detail-title">字幕详情</h2><p id="detail-summary"></p>
+      <button class="stop-speech" type="button">停止朗读</button>
       <p id="detail-message" role="status"></p><ol id="cue-list"></ol>
       <nav class="pager" aria-label="字幕 cue 分页"><button id="cue-prev" type="button">上一页</button><span id="cue-page"></span><button id="cue-next" type="button">下一页</button></nav>
       <h3>词汇候选</h3><p id="candidate-message" role="status"></p><div id="candidate-list"></div>
@@ -38,7 +39,7 @@
       <form id="vocabulary-controls"><label>搜索词形 <input id="vocabulary-search" type="search"></label><label>排序 <select id="vocabulary-sort"><option value="created_at">加入时间</option><option value="frequency">词次</option><option value="alphabetical">字母</option></select></label><button type="submit">查询</button></form>
       <p id="vocabulary-message" role="status"></p><div id="vocabulary-list"></div>
     </section>
-    <section id="vocabulary-detail" hidden><button id="back-to-vocabulary" type="button">返回学习库</button><h2 id="word-title"></h2><dl id="word-fields"></dl><h3>来源语境</h3><div id="context-list"></div><h3>复习历史</h3><div id="review-history"></div></section>
+    <section id="vocabulary-detail" hidden><button id="back-to-vocabulary" type="button">返回学习库</button><h2 id="word-title"></h2><button id="play-word" type="button">朗读单词</button> <button class="stop-speech" type="button">停止朗读</button><p id="speech-message" role="status"></p><dl id="word-fields"></dl><h3>来源语境</h3><div id="context-list"></div><h3>复习历史</h3><div id="review-history"></div></section>
     <section id="review-panel" hidden><h2>复习</h2><label>模式 <select id="review-mode"><option value="spelling">拼写</option><option value="meaning">词义回忆</option></select></label><button id="load-review" type="button">加载到期队列</button><p id="review-message" role="status"></p><div id="review-card" hidden><p id="review-prompt"></p><label>拼写答案 <input id="review-input" autocomplete="off" autocorrect="off"></label><fieldset><legend>最终评分</legend><label><input type="radio" name="rating" value="good" checked>记得</label><label><input type="radio" name="rating" value="hard">模糊</label><label><input type="radio" name="rating" value="again">忘记</label></fieldset><button id="submit-review" type="button">确认并保存</button></div></section>
     <section id="settings-panel" hidden><h2>设置</h2><p>本地学习功能无需网络。云端服务配置将在后续任务中提供。</p><p id="network-state" role="status"></p></section>
   </main>
