@@ -2,7 +2,7 @@
 body { margin: 0; padding: 3rem 1.5rem; color: #152334; background: #f4f7fa; }
 main { max-width: 58rem; margin: 0 auto; padding: 2rem; background: white; border-radius: 0.75rem; }
 h1 { margin-top: 0; }
-header, #library-controls, #vocabulary-controls, .pager { display: flex; align-items: center; gap: 1rem; justify-content: space-between; flex-wrap: wrap; }
+header, #library-controls, #vocabulary-controls, #subtitle-upload, .pager { display: flex; align-items: center; gap: 1rem; justify-content: space-between; flex-wrap: wrap; }
 button, input, select { font: inherit; padding: .45rem .7rem; }
 .subtitle-card { border: 1px solid #d8e0e8; border-radius: .5rem; margin: .75rem 0; padding: 1rem; }
 .subtitle-card h3 { margin: 0 0 .4rem; }
@@ -13,3 +13,5 @@ button, input, select { font: inherit; padding: .45rem .7rem; }
 .timeline { display: block; color: #526679; font-variant-numeric: tabular-nums; font-size: .9rem; }
 .pager { justify-content: center; margin-top: 1rem; }
 [hidden] { display: none !important; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #1967a3; outline-offset: 2px; }
+@media (max-width: 48rem) { body { padding: 1rem .5rem; } main { padding: 1rem; } }

@@ -13,9 +13,19 @@ async function post(path, body) {
   if (!response.ok) throw new Error('request_failed');
   return response.json();
 }
+async function uploadSubtitle(file) {
+  const body = new FormData(); body.append('file', file);
+  const response = await fetch('/api/v1/subtitles', { method: 'POST', headers, body });
+  if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.error?.code || `http_${response.status}`); }
+  return response.json();
+}
+function errorMessage(error) {
+  const messages = { subtitle_already_exists: '相同字幕已经存在，可直接打开。', subtitle_file_too_large: '文件过大，请拆分后重试。', subtitle_format_unsupported: '仅支持 SRT 或 VTT 文件。', invalid_token: '页面会话已失效，请刷新页面。' };
+  return messages[error.message] || (navigator.onLine ? '操作失败，请检查输入后重试。' : '外部网络不可用；本地功能仍可使用，请重试。');
+}
 function text(element, value) { element.textContent = value; }
 function showOnly(selector) {
-  ['#subtitle-library', '#subtitle-detail', '#vocabulary-library', '#vocabulary-detail', '#review-panel'].forEach((id) => { $(id).hidden = id !== selector; });
+  ['#subtitle-library', '#subtitle-detail', '#vocabulary-library', '#vocabulary-detail', '#review-panel', '#settings-panel'].forEach((id) => { $(id).hidden = id !== selector; });
 }
 
 async function loadLibrary() {
@@ -108,6 +118,9 @@ async function loadWord(itemId) {
       if (context.available) { link.dataset.subtitleId = context.subtitle_id; link.dataset.cueId = context.cue_id; }
       row.append(label, link); contexts.append(row);
     });
+    const history=await api(`/api/v1/review/items/${itemId}/history`); const historyList=$('#review-history'); historyList.replaceChildren();
+    history.items.forEach((attempt) => { const row=document.createElement('p'); text(row,`${attempt.attempted_local_date} · ${attempt.mode} · ${attempt.final_rating} · 下次 ${attempt.next_review_date}`); historyList.append(row); });
+    if (!history.total) text(historyList,'暂无复习历史。');
   } catch (_) { text($('#vocabulary-message'), '词条详情加载失败。'); }
 }
 
@@ -136,6 +149,7 @@ $('#back-to-library').addEventListener('click', loadLibrary);
 $('#show-library').addEventListener('click', loadLibrary);
 $('#show-vocabulary').addEventListener('click', loadVocabulary);
 $('#show-review').addEventListener('click', () => showOnly('#review-panel'));
+$('#show-settings').addEventListener('click', () => showOnly('#settings-panel'));
 $('#back-to-vocabulary').addEventListener('click', loadVocabulary);
 $('#vocabulary-controls').addEventListener('submit', (event) => { event.preventDefault(); loadVocabulary(); });
 $('#candidate-list').addEventListener('click', async (event) => {
@@ -153,6 +167,12 @@ $('#context-list').addEventListener('click', async (event) => {
     state.detailPage = Math.ceil(located.target.sequence / 50); await loadDetail();
     document.querySelector(`#cue-${event.target.dataset.cueId}`)?.scrollIntoView({ block: 'center' });
   } catch (_) { text($('#vocabulary-message'), '来源定位失败。'); }
+});
+$('#subtitle-upload').addEventListener('submit', async (event) => {
+  event.preventDefault(); const file=$('#subtitle-file').files[0]; if (!file) return;
+  text($('#upload-message'),'正在本地解析并保存…');
+  try { const result=await uploadSubtitle(file); text($('#upload-message'),`已导入 ${result.subtitle.title}：${result.subtitle.cue_count} 条 cue`); state.libraryPage=1; await loadLibrary(); }
+  catch (error) { text($('#upload-message'),errorMessage(error)); }
 });
 
 let reviewItems = [];
@@ -177,3 +197,5 @@ api('/api/v1/system/info')
   .then((info) => text($('#service-status'), `本地服务正常运行 · 版本 ${info.version}`))
   .catch(() => text($('#service-status'), '无法获取服务状态，请刷新页面。'));
 loadLibrary();
+function updateNetworkState() { text($('#network-state'),navigator.onLine?'当前可联网；本地功能不依赖网络。':'当前离线；字幕、学习库和复习仍可使用。'); }
+window.addEventListener('online',updateNetworkState); window.addEventListener('offline',updateNetworkState); updateNetworkState();
