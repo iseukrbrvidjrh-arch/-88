@@ -40,3 +40,4 @@ exports/
 logs/
 *.log
 *.log.*
+prototype/v0.2-ui/reports/
