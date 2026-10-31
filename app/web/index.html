@@ -68,6 +68,7 @@
       <div id="ai-tools"><h3>翻译与解释</h3><label>任务 <select id="ai-kind"><option value="translation">句子翻译</option><option value="definition">词汇释义</option><option value="context_explanation">语境解释</option></select></label>
       <label>目标文本 <textarea id="ai-text" maxlength="4000"></textarea></label><label>当前语境（可选） <textarea id="ai-context" maxlength="4000"></textarea></label><button id="preview-ai" type="button">生成发送预览</button>
       <div id="ai-preview" hidden><h4>实际发送内容</h4><pre id="ai-preview-content"></pre><p>目的地：千问 API；历史：0；附件：0</p><button id="confirm-ai" type="button">确认发送</button><button id="cancel-ai" type="button">取消</button></div><p id="ai-result" role="status"></p></div>
+      <div id="diagnostics"><h3>本地诊断日志</h3><p>日志只包含时间、操作、状态和错误码，不包含字幕、聊天内容或密钥。</p><button id="view-logs" type="button">查看最近日志</button><button id="clear-logs" type="button">清除日志…</button><p id="log-status" role="status"></p><pre id="log-output" hidden></pre></div>
     </section>
   </main>
 </body>

@@ -55,3 +55,35 @@ def close_logger(logger: logging.Logger) -> None:
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
         handler.close()
+
+
+def read_log_entries(data_dir: Path, limit: int = 200) -> list[dict[str, object]]:
+    """Return bounded structured diagnostics; malformed lines are ignored."""
+    path = data_dir / "logs" / "scenelingo.log"
+    if not path.is_file() or path.is_symlink():
+        return []
+    entries=[]
+    try:
+        for line in path.read_text(encoding="utf-8",errors="replace").splitlines()[-limit:]:
+            try:
+                item=json.loads(line)
+            except (TypeError,ValueError):
+                continue
+            allowed={key:item[key] for key in ("time","level","operation","code","status","request_id",
+                "current_version","target_version","applied_count") if key in item}
+            if {"time","level","operation","code"} <= allowed.keys(): entries.append(allowed)
+    except OSError:
+        return []
+    return entries
+
+
+def clear_log_files(data_dir: Path) -> int:
+    """Clear only SceneLingo's own current/rotated logs, never arbitrary paths."""
+    log_dir=data_dir / "logs"; current=log_dir / "scenelingo.log"; cleared=0
+    if current.is_file() and not current.is_symlink():
+        fd=os.open(current,os.O_WRONLY|os.O_TRUNC|os.O_NOFOLLOW)
+        os.close(fd);os.chmod(current,0o600);cleared+=1
+    for path in log_dir.glob("scenelingo.log.*"):
+        if path.is_file() and not path.is_symlink():
+            path.unlink();cleared+=1
+    return cleared

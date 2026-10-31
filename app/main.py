@@ -108,6 +108,7 @@ def create_app(settings: Settings | None = None,
 
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.clock = clock or (lambda: datetime.now().astimezone())
+    app.state.settings = settings
 
     @app.middleware("http")
     async def local_security(request: Request, call_next):
