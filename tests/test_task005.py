@@ -14,6 +14,7 @@ from app.repositories.database import Database
 from app.repositories.migrations.runner import initialize_database
 from app.repositories.migrations.versions import MIGRATIONS
 from app.services.subtitle_import import import_subtitle
+from app.services.subtitle_query import subtitle_detail
 from app.services.vocabulary import add_word, candidates, detail, library, normalize_key
 
 
@@ -97,6 +98,8 @@ def test_restart_persists_item_context_and_jump_target(tmp_path):
     reopened = Database(database.path); item = detail(reopened, created["learning_item_id"])
     assert item["status"] == "new" and item["contexts"][0]["available"] is True
     assert item["contexts"][0]["cue_id"] == cues[0][0]
+    reopened_detail = subtitle_detail(reopened, subtitle_id)
+    assert reopened_detail["cues"][0]["word_states"]["don't"] == created["learning_item_id"]
 
 
 def test_api_requires_explicit_post_and_uses_only_local_dependencies(tmp_path, monkeypatch):

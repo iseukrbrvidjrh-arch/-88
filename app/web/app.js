@@ -1,7 +1,7 @@
 const token = document.querySelector('meta[name="scenelingo-token"]').content;
 const headers = { 'X-SceneLingo-Token': token, Accept: 'application/json' };
 const $ = (selector) => document.querySelector(selector);
-const state = { libraryPage: 1, detailPage: 1, subtitleId: null, resume: null, targetCueId: null, resumeReviewItemId: null };
+const state = { libraryPage: 1, detailPage: 1, subtitleId: null, resume: null, targetCueId: null, resumeReviewItemId: null, currentCue: null, selectedWord: null };
 
 async function api(path) {
   const response = await fetch(path, { headers, cache: 'no-store' });
@@ -31,7 +31,68 @@ function errorMessage(error) {
 function text(element, value) { element.textContent = value; }
 function showOnly(selector) {
   ['#progress-dashboard', '#subtitle-library', '#subtitle-detail', '#vocabulary-library', '#vocabulary-detail', '#review-panel', '#chat-panel', '#settings-panel'].forEach((id) => { $(id).hidden = id !== selector; });
+  const workbench = selector === '#subtitle-detail';
+  document.body.dataset.view = workbench ? 'workbench' : 'standard';
+  const titles = { '#subtitle-library':'选择一份字幕，开始在语境里学习。', '#subtitle-detail':'在语境里，把词学活。', '#progress-dashboard':'看见积累，也看见节奏。', '#vocabulary-library':'把遇见的词，变成自己的。', '#review-panel':'按自己的节奏，完成今天的复习。', '#chat-panel':'让 AI 从当前问题开始帮助你。', '#settings-panel':'本地数据和云端发送都由你决定。' };
+  text($('#page-title'), titles[selector] || 'SceneLingo');
+  const active = { '#progress-dashboard':'show-dashboard', '#subtitle-library':'show-library', '#subtitle-detail':'show-workbench', '#vocabulary-library':'show-vocabulary', '#vocabulary-detail':'show-vocabulary', '#review-panel':'show-review', '#chat-panel':'show-chat', '#settings-panel':'show-settings' }[selector];
+  document.querySelectorAll('.side-nav button').forEach((button) => button.classList.toggle('is-active', button.id === active));
 }
+
+function appendWords(container, cue) {
+  const pattern = /[A-Za-z]+(?:['’\-][A-Za-z]+)*/g;
+  let cursor = 0;
+  for (const match of cue.text.matchAll(pattern)) {
+    if (match.index > cursor) container.append(document.createTextNode(cue.text.slice(cursor, match.index)));
+    const key = match[0].replace(/’/g, "'").toLowerCase();
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'word-token';
+    button.dataset.word = key; button.dataset.cueId = cue.id; button.dataset.cueText = cue.text;
+    if (cue.word_states?.[key]) { button.classList.add('is-saved'); button.dataset.learningItemId = cue.word_states[key]; }
+    text(button, match[0]); container.append(button); cursor = match.index + match[0].length;
+  }
+  if (cursor < cue.text.length) container.append(document.createTextNode(cue.text.slice(cursor)));
+}
+
+function positionPopover(anchor) {
+  const popover = $('#word-popover'); popover.hidden = false;
+  const rect = anchor.getBoundingClientRect(); const width = Math.min(340, window.innerWidth - 24);
+  popover.style.width = `${width}px`; let left = Math.min(rect.left, window.innerWidth - width - 12); left = Math.max(12, left);
+  let top = rect.bottom + 8; if (top + popover.offsetHeight > window.innerHeight - 12) top = rect.top - popover.offsetHeight - 8;
+  popover.style.left = `${left}px`; popover.style.top = `${Math.max(12, top)}px`;
+}
+
+async function openWordPopover(button) {
+  state.selectedWord = { word: button.dataset.word, cueId: Number(button.dataset.cueId), cueText: button.dataset.cueText, button };
+  document.querySelectorAll('.word-token.is-selected').forEach((item) => item.classList.remove('is-selected')); button.classList.add('is-selected');
+  text($('#popover-word'), button.textContent); text($('#popover-primary-ipa'), '正在查询本地词典…');
+  text($('#popover-context-text'), button.dataset.cueText); text($('#popover-message'), '');
+  const save = $('#popover-save'); save.disabled = Boolean(button.dataset.learningItemId); text(save.querySelector('span'), save.disabled ? '已在生词库' : '加入生词库');
+  $('#popover-pronunciations').replaceChildren(); positionPopover(button);
+  try {
+    const result = await api(`/api/v1/pronunciation?word=${encodeURIComponent(button.dataset.word)}`);
+    text($('#popover-primary-ipa'), result.display);
+    const list = $('#popover-pronunciations');
+    result.pronunciations.forEach((value, index) => { const row=document.createElement('div');row.className='pronunciation';const label=document.createElement('span');text(label,`读音 ${index+1}`);const ipa=document.createElement('strong');text(ipa,value);row.append(label,ipa);list.append(row); });
+    if (!result.found) text($('#popover-message'),'本地美式 IPA 词典暂未收录。');
+    positionPopover(button);
+  } catch (_) { text($('#popover-primary-ipa'),'查询失败'); text($('#popover-message'),'无法读取本地 IPA，请重试。'); }
+}
+
+function closeWordPopover() { $('#word-popover').hidden=true; document.querySelectorAll('.word-token.is-selected').forEach((item)=>item.classList.remove('is-selected')); state.selectedWord=null; }
+
+function setupWorkbenchChat() {
+  const pane=$('.tutor-pane'); const head=$('.tutor-head'); const placeholder=$('.tutor-placeholder');
+  placeholder.remove();
+  const status=document.createElement('small');status.id='wb-chat-status';text(status,'真实会话 · 发送前确认');head.querySelector('div').append(status);
+  const fresh=document.createElement('button');fresh.id='wb-new-chat';fresh.type='button';text(fresh,'新建');head.append(fresh);
+  const contextToggle=document.createElement('label');contextToggle.className='context-toggle';const contextCheck=document.createElement('input');contextCheck.id='wb-attach-context';contextCheck.type='checkbox';contextCheck.checked=true;contextToggle.append(contextCheck,document.createTextNode(' 随本次问题发送当前句'));$('.context-card').append(contextToggle);
+  const historyLabel=document.createElement('label');historyLabel.className='history-select';historyLabel.append(document.createTextNode('历史会话'));const history=document.createElement('select');history.id='wb-chat-history';const option=document.createElement('option');option.value='';text(option,'请选择或新建会话');history.append(option);historyLabel.append(history);
+  const messages=document.createElement('div');messages.id='wb-chat-messages';messages.className='wb-chat-messages';messages.setAttribute('aria-live','polite');
+  const preview=document.createElement('div');preview.id='wb-chat-preview';preview.className='wb-chat-preview';preview.hidden=true;const previewTitle=document.createElement('strong');text(previewTitle,'发送预览');const content=document.createElement('pre');content.id='wb-chat-preview-content';const meta=document.createElement('p');meta.id='wb-chat-preview-meta';const previewActions=document.createElement('div');const confirm=document.createElement('button');confirm.id='wb-confirm-chat';confirm.type='button';text(confirm,'确认并发送');const cancel=document.createElement('button');cancel.id='wb-cancel-preview';cancel.type='button';text(cancel,'取消');previewActions.append(confirm,cancel);preview.append(previewTitle,content,meta,previewActions);
+  const composer=document.createElement('div');composer.className='wb-chat-composer';const input=document.createElement('textarea');input.id='wb-chat-input';input.rows=3;input.maxLength=4000;input.placeholder='输入英语学习问题… Enter 预览，Shift+Enter 换行';const actions=document.createElement('div');const stop=document.createElement('button');stop.id='wb-cancel-stream';stop.type='button';stop.disabled=true;text(stop,'取消生成');const send=document.createElement('button');send.id='wb-preview-chat';send.type='button';text(send,'预览发送');actions.append(stop,send);composer.append(input,actions);
+  pane.append(historyLabel,messages,preview,composer);
+}
+setupWorkbenchChat();
 
 async function loadProgress() {
   showOnly('#progress-dashboard'); $('#back-to-library').hidden = true;
@@ -71,7 +132,7 @@ async function loadLibrary() {
       const remove = document.createElement('button'); remove.type = 'button'; remove.dataset.lifecycleId = item.id; remove.dataset.action = 'delete'; text(remove, '删除…');
       lifecycle.append(archive, remove); card.append(heading, stats, button, lifecycle); list.append(card);
     });
-    text($('#library-message'), data.total ? '' : '还没有导入字幕。字幕导入入口将在后续界面任务中完善。');
+    text($('#library-message'), data.total ? '' : '还没有字幕。点击右上角“导入字幕”，选择本机 SRT 或 VTT 文件。');
     text($('#library-page'), `第 ${data.page} 页 · 共 ${data.total} 条`);
     $('#library-prev').disabled = data.page <= 1; $('#library-next').disabled = data.page * data.page_size >= data.total;
   } catch (_) { text($('#library-message'), '字幕库加载失败，请刷新页面。'); }
@@ -85,19 +146,24 @@ async function loadDetail() {
     text($('#detail-summary'), `${data.subtitle.cue_count} cue · ${data.subtitle.token_occurrence_count} 词次 · ${data.subtitle.unique_token_count} 去重词形`);
     const list = $('#cue-list'); list.replaceChildren();
     data.cues.forEach((cue) => {
-      const item = document.createElement('li'); item.id = `cue-${cue.id}`;
-      const timeline = document.createElement('span'); timeline.className = 'timeline'; text(timeline, `#${cue.sequence}  ${cue.start_time} → ${cue.end_time}`);
-      const content = document.createElement('span'); text(content, cue.text); item.append(timeline, content); list.append(item);
-      const play=document.createElement('button'); play.type='button'; play.dataset.speechText=cue.text; play.dataset.speechTarget='sentence'; text(play,'朗读句子'); item.append(play);
-      const ask=document.createElement('button'); ask.type='button'; ask.dataset.chatCueId=cue.id; ask.dataset.chatContext=cue.text; text(ask,'用 AI 学习'); item.append(ask);
+      const item = document.createElement('li'); item.id = `cue-${cue.id}`; item.className = 'cue'; item.dataset.cueId=cue.id; item.dataset.cueText=cue.text;
+      const timeline = document.createElement('span'); timeline.className = 'cue-time'; text(timeline, `${cue.start_time.slice(3,8)}\n#${cue.sequence}`);
+      const content = document.createElement('span'); content.className='cue-text'; appendWords(content,cue); item.append(timeline, content); list.append(item);
     });
     const resumeCue=data.cues.find(cue=>cue.id===state.targetCueId)||data.cues[0];
-    if(resumeCue){await put('/api/v1/progress/continue',{subtitle_id:state.subtitleId,cue_id:resumeCue.id});state.targetCueId=null;}
+    if(resumeCue){state.currentCue=resumeCue; text($('#workbench-context'),resumeCue.text); document.querySelector(`#cue-${resumeCue.id}`)?.classList.add('is-active'); await put('/api/v1/progress/continue',{subtitle_id:state.subtitleId,cue_id:resumeCue.id});state.targetCueId=null;}
     text($('#detail-message'), data.cues.length ? '' : '本页没有 cue。');
     text($('#cue-page'), `第 ${data.page} 页 · 共 ${data.total} 条`);
     $('#cue-prev').disabled = data.page <= 1; $('#cue-next').disabled = data.page * data.page_size >= data.total;
-    await loadCandidates();
+    await Promise.all([loadCandidates(), loadEpisodeList(), loadWorkbenchConversations()]);
   } catch (_) { text($('#detail-message'), '字幕来源已不可用或加载失败。'); }
+}
+
+async function loadEpisodeList() {
+  try {
+    const data=await api('/api/v1/subtitles?status=imported&sort=imported_at&page=1&page_size=50'); const list=$('#episode-list');list.replaceChildren();
+    data.items.forEach((subtitle)=>{const button=document.createElement('button');button.type='button';button.className='episode-item';button.classList.toggle('is-active',subtitle.id===state.subtitleId);button.dataset.episodeId=subtitle.id;const title=document.createElement('strong');text(title,subtitle.title);const meta=document.createElement('span');text(meta,`${subtitle.source_format.toUpperCase()} · ${subtitle.cue_count} 句 · ${subtitle.unique_token_count} 词形`);button.append(title,meta);list.append(button);});
+  } catch (_) { text($('#detail-message'),'字幕列表暂时无法刷新。'); }
 }
 
 async function loadCandidates() {
@@ -178,16 +244,24 @@ $('#cue-prev').addEventListener('click', () => { state.detailPage -= 1; loadDeta
 $('#cue-next').addEventListener('click', () => { state.detailPage += 1; loadDetail(); });
 $('#back-to-library').addEventListener('click', loadLibrary);
 $('#show-library').addEventListener('click', loadLibrary);
+$('#show-workbench').addEventListener('click', () => { if (state.subtitleId) loadDetail(); else loadLibrary(); });
 $('#show-dashboard').addEventListener('click', loadProgress);
 $('#show-vocabulary').addEventListener('click', loadVocabulary);
 $('#show-review').addEventListener('click', () => showOnly('#review-panel'));
 $('#show-chat').addEventListener('click', () => { showOnly('#chat-panel'); loadConversations(); });
 $('#show-settings').addEventListener('click', () => { showOnly('#settings-panel'); loadAiSettings(); });
+$('#workbench-import').addEventListener('click', () => { loadLibrary().then(() => $('#subtitle-file').click()); });
+$('#episode-list').addEventListener('click',(event)=>{const button=event.target.closest('[data-episode-id]');if(!button)return;state.subtitleId=Number(button.dataset.episodeId);state.detailPage=1;closeWordPopover();loadDetail();});
+$('#cue-list').addEventListener('click',(event)=>{const word=event.target.closest('.word-token');if(word){openWordPopover(word);return;}const cue=event.target.closest('.cue');if(!cue)return;document.querySelectorAll('.cue.is-active').forEach((item)=>item.classList.remove('is-active'));cue.classList.add('is-active');state.currentCue={id:Number(cue.dataset.cueId),text:cue.dataset.cueText};text($('#workbench-context'),cue.dataset.cueText);put('/api/v1/progress/continue',{subtitle_id:state.subtitleId,cue_id:state.currentCue.id}).catch(()=>text($('#detail-message'),'当前位置暂未保存。'));});
+$('#play-current-sentence').addEventListener('click',async()=>{if(!state.currentCue)return;try{const result=await post('/api/v1/speech/play',{text:state.currentCue.text,target:'sentence'});text($('#detail-message'),`正在本地朗读（${result.character_count} 字符）`);}catch(_){text($('#detail-message'),'本地语音不可用或播放失败。');}});
+$('#close-word-popover').addEventListener('click',closeWordPopover);
+$('#popover-speak').addEventListener('click',async()=>{if(!state.selectedWord)return;try{await post('/api/v1/speech/play',{text:state.selectedWord.word,target:'word'});text($('#popover-message'),'正在使用 macOS 本地语音朗读。');}catch(_){text($('#popover-message'),'本地语音不可用或播放失败。');}});
+$('#popover-save').addEventListener('click',async()=>{if(!state.selectedWord)return;const selected=state.selectedWord;try{const result=await post('/api/v1/vocabulary',{subtitle_id:state.subtitleId,cue_id:selected.cueId,token_key:selected.word});selected.button.dataset.learningItemId=result.learning_item_id;document.querySelectorAll('.word-token').forEach((button)=>{if(button.dataset.word===selected.word){button.dataset.learningItemId=result.learning_item_id;button.classList.add('is-saved');}});$('#popover-save').disabled=true;text($('#popover-save span'),'已在生词库');text($('#popover-message'),result.created?'已保存到真实学习库。':'学习库中已有该词，已补充当前语境。');await loadCandidates();}catch(_){text($('#popover-message'),'保存失败，请重试。');}});
 $('#back-to-vocabulary').addEventListener('click', loadVocabulary);
 $('#vocabulary-controls').addEventListener('submit', (event) => { event.preventDefault(); loadVocabulary(); });
 $('#candidate-list').addEventListener('click', async (event) => {
   if (!event.target.dataset.tokenKey) return;
-  try { await post('/api/v1/vocabulary', { subtitle_id: state.subtitleId, cue_id: Number(event.target.dataset.cueId), token_key: event.target.dataset.tokenKey }); await loadCandidates(); }
+  try { await post('/api/v1/vocabulary', { subtitle_id: state.subtitleId, cue_id: Number(event.target.dataset.cueId), token_key: event.target.dataset.tokenKey }); await loadDetail(); }
   catch (_) { text($('#candidate-message'), '加入失败，请重试。'); }
 });
 $('#vocabulary-list').addEventListener('click', (event) => { if (event.target.dataset.wordId) loadWord(Number(event.target.dataset.wordId)); });
@@ -271,6 +345,13 @@ async function openConversation(id){
   catch(_){text($('#chat-status'),'会话加载失败。');}
 }
 function renderChatMessage(message){const card=document.createElement('article');card.className=`chat-message ${message.role}`;const meta=document.createElement('span');meta.className='message-meta';text(meta,message.role==='assistant'?`AI 生成，可能不准确 · ${message.status}`:`你 · ${message.status}`);const body=document.createElement('span');text(body,message.content);card.append(meta,body);if(message.role==='assistant'&&message.status==='complete'){const save=document.createElement('button');save.type='button';save.dataset.saveMessageId=message.id;save.dataset.saveText=message.content;text(save,'保存选中内容');card.append(save);}$('#chat-messages').append(card);return card;}
+function renderWorkbenchMessage(message){const card=document.createElement('article');card.className=`wb-message ${message.role}`;const meta=document.createElement('span');text(meta,message.role==='assistant'?`AI · ${message.status}`:'你');const body=document.createElement('p');const fallback=message.status==='failed'?'请求失败，未产生完整回答；不会自动重试。':message.status==='cancelled'?'请求已取消，未产生完整回答。':'';text(body,message.content||fallback);card.append(meta,body);$('#wb-chat-messages').append(card);return card;}
+async function loadWorkbenchConversations(){try{const data=await api('/api/v1/ai/chat/conversations');const select=$('#wb-chat-history');const current=chatState.conversationId;select.replaceChildren();const empty=document.createElement('option');empty.value='';text(empty,'请选择或新建会话');select.append(empty);data.items.forEach(item=>{const option=document.createElement('option');option.value=item.id;text(option,`${item.title} · ${item.message_count} 条`);select.append(option);});if(current)select.value=String(current);text($('#wb-chat-status'),current?'会话已连接 · 发送前确认':'请选择历史会话或新建');}catch(_){text($('#wb-chat-status'),'历史会话加载失败');}}
+async function openWorkbenchConversation(id){try{const data=await api(`/api/v1/ai/chat/conversations/${id}`);chatState.conversationId=id;const list=$('#wb-chat-messages');list.replaceChildren();data.messages.forEach(renderWorkbenchMessage);$('#wb-chat-history').value=String(id);text($('#wb-chat-status'),`${data.title} · ${data.messages.length} 条消息`);list.scrollTop=list.scrollHeight;}catch(_){text($('#wb-chat-status'),'会话恢复失败，请重试');}}
+async function newWorkbenchConversation(){try{const result=await post('/api/v1/ai/chat/conversations',{title:'字幕学习'});await loadWorkbenchConversations();await openWorkbenchConversation(result.id);$('#wb-chat-input').focus();}catch(_){text($('#wb-chat-status'),'新建会话失败');}}
+async function previewWorkbenchChat(){const draft=$('#wb-chat-input').value.trim();if(!draft){text($('#wb-chat-status'),'请先输入问题');return;}if(!chatState.conversationId)await newWorkbenchConversation();if(!chatState.conversationId)return;try{const attach=$('#wb-attach-context').checked&&state.currentCue;chatState.plan=await post('/api/v1/ai/chat/send-plans',{conversation_id:chatState.conversationId,text:draft,template:'free',history_count:2,cue_id:attach?state.currentCue.id:null,learning_item_id:null});text($('#wb-chat-preview-content'),JSON.stringify(chatState.plan.actual_content,null,2));text($('#wb-chat-preview-meta'),`历史 ${chatState.plan.history_count} 条 · 附件 ${chatState.plan.attachments.length} 个 · 模型 ${chatState.plan.model} · 目的地 千问 API`);$('#wb-chat-preview').hidden=false;text($('#wb-chat-status'),'请检查实际发送内容');}catch(_){text($('#wb-chat-status'),'无法生成预览：请检查云端设置、Key 和输入；草稿已保留');}}
+async function executeWorkbenchChat(){if(!chatState.plan)return;const plan=chatState.plan;chatState.plan=null;$('#wb-chat-preview').hidden=true;chatState.controller=new AbortController();$('#wb-cancel-stream').disabled=false;const pending=renderWorkbenchMessage({role:'assistant',status:'pending',content:''});const body=pending.querySelector('p');text($('#wb-chat-status'),'正在生成，可随时取消…');let finalStatus='pending';try{const response=await fetch('/api/v1/ai/chat/execute',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({plan_id:plan.plan_id,execution_token:plan.execution_token}),signal:chatState.controller.signal});if(!response.ok)throw new Error('request_failed');const reader=response.body.getReader();const decoder=new TextDecoder();let buffer='';while(true){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const blocks=buffer.split('\n\n');buffer=blocks.pop();for(const block of blocks){const event=block.match(/^event: (.+)$/m)?.[1];const raw=block.match(/^data: (.+)$/m)?.[1];if(!event||!raw)continue;const data=JSON.parse(raw);if(event==='delta'){body.textContent+=data.text;$('#wb-chat-messages').scrollTop=$('#wb-chat-messages').scrollHeight;}if(event==='done'){finalStatus=data.status;pending.querySelector('span').textContent=`AI · ${data.status}`;text($('#wb-chat-status'),data.status==='incomplete'?'回答已截断，保留为不完整内容':`完成 · 估算费用 ${data.cost.estimated_cost} ${data.cost.currency}`);}if(event==='error'){finalStatus=data.status;pending.querySelector('span').textContent=`AI · ${data.status}`;text($('#wb-chat-status'),data.message);}}}if(finalStatus==='complete'||finalStatus==='incomplete')$('#wb-chat-input').value='';await openWorkbenchConversation(chatState.conversationId);await loadWorkbenchConversations();}catch(error){pending.querySelector('span').textContent='AI · 未完成';text($('#wb-chat-status'),error.name==='AbortError'?'已取消，回答未标记为完成；草稿已保留':'请求失败，不会自动重试；草稿已保留');}finally{$('#wb-cancel-stream').disabled=true;chatState.controller=null;}}
+$('#wb-new-chat').addEventListener('click',newWorkbenchConversation);$('#wb-chat-history').addEventListener('change',event=>{if(event.target.value)openWorkbenchConversation(Number(event.target.value));});$('#wb-preview-chat').addEventListener('click',previewWorkbenchChat);$('#wb-cancel-preview').addEventListener('click',()=>{chatState.plan=null;$('#wb-chat-preview').hidden=true;text($('#wb-chat-status'),'已取消，没有发送');});$('#wb-confirm-chat').addEventListener('click',executeWorkbenchChat);$('#wb-cancel-stream').addEventListener('click',()=>chatState.controller?.abort());$('#wb-chat-input').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();previewWorkbenchChat();}});
 $('#new-chat').addEventListener('click',async()=>{try{const c=await post('/api/v1/ai/chat/conversations',{title:'新会话'});await loadConversations();await openConversation(c.id);}catch(_){text($('#chat-status'),'新建会话失败。');}});
 $('#conversation-list').addEventListener('click',async event=>{if(event.target.dataset.conversationId)openConversation(Number(event.target.dataset.conversationId));if(event.target.dataset.deleteConversation){const id=Number(event.target.dataset.deleteConversation);if(!window.confirm('删除会话？已保存学习内容会保留。'))return;try{await fetch(`/api/v1/ai/chat/conversations/${id}`,{method:'DELETE',headers:{...headers,'Content-Type':'application/json'}}).then(r=>{if(!r.ok)throw new Error();});if(chatState.conversationId===id){chatState.conversationId=null;$('#chat-messages').replaceChildren();}loadConversations();}catch(_){text($('#chat-status'),'删除会话失败。');}}});
 document.addEventListener('click',event=>{if(event.target.dataset.chatCueId){chatState.context={cue_id:Number(event.target.dataset.chatCueId),text:event.target.dataset.chatContext};text($('#chat-context'),`当前字幕：${chatState.context.text}`);$('#remove-chat-context').hidden=false;showOnly('#chat-panel');loadConversations();}});

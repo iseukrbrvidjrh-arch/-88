@@ -118,6 +118,7 @@ Second
     assert (detail["cues"][0]["start_time"], detail["cues"][0]["end_time"]) == (
         "01:02:03.004", "01:02:05.006",
     )
+    assert detail["cues"][0]["word_states"] == {}
     assert subtitle_detail(database, created.subtitle.id, page=3, page_size=1)["cues"] == []
 
 

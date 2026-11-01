@@ -51,6 +51,8 @@ try {
     const overflow = await evaluate(`document.documentElement.scrollWidth > document.documentElement.clientWidth`);
     if (overflow) throw new Error(`horizontal overflow at ${width}x${height}`);
   }
+  await evaluate(`document.querySelector('#show-library').click()`);
+  await waitFor(`!document.querySelector('#subtitle-library').hidden`);
   const doc = await command('DOM.getDocument');
   const input = await command('DOM.querySelector', { nodeId: doc.result.root.nodeId, selector: '#subtitle-file' });
   await command('DOM.setFileInputFiles', { nodeId: input.result.nodeId, files: [`${process.cwd()}/tests/fixtures/task008-browser.srt`] });

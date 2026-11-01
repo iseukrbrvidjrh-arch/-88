@@ -3,6 +3,7 @@
 from dataclasses import asdict
 
 from app.core.errors import ApplicationError
+from app.domain.subtitle.tokens import tokenize
 from app.repositories.database import Database
 from app.repositories.subtitles import CueRecord, StoredSubtitle, SubtitleRepository
 
@@ -31,12 +32,15 @@ def _timeline(milliseconds: int) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{millis:03d}"
 
 
-def _cue(item: CueRecord) -> dict[str, object]:
+def _cue(item: CueRecord, saved_words: dict[str, int] | None = None) -> dict[str, object]:
+    saved_words = saved_words or {}
+    keys = {token.key for token in tokenize(item.clean_text)}
     return {
         "id": item.id, "sequence": item.sequence,
         "start_ms": item.start_ms, "end_ms": item.end_ms,
         "start_time": _timeline(item.start_ms), "end_time": _timeline(item.end_ms),
         "text": item.clean_text, "is_valid": item.is_valid,
+        "word_states": {key: saved_words[key] for key in keys if key in saved_words},
     }
 
 
@@ -65,7 +69,13 @@ def subtitle_detail(database: Database, subtitle_id: int, *, page: int = 1,
         if subtitle is None or subtitle.status == "deleted":
             raise ApplicationError("subtitle_not_found", "字幕不存在或来源已不可用。", status_code=404)
         cues, total = repository.list_cues(subtitle_id, limit=limit, offset=offset)
-    return {"subtitle": _subtitle(subtitle), "cues": [_cue(item) for item in cues],
+        saved_words = {
+            str(row[0]): int(row[1]) for row in connection.execute(
+                "SELECT dedupe_key,id FROM learning_item "
+                "WHERE entry_type='word' AND archived_at IS NULL"
+            )
+        }
+    return {"subtitle": _subtitle(subtitle), "cues": [_cue(item, saved_words) for item in cues],
             "page": page, "page_size": page_size, "total": total}
 
 

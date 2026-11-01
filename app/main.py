@@ -4,6 +4,7 @@ import argparse
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import html
+import os
 from pathlib import Path
 import sys
 from typing import Callable
@@ -183,6 +184,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--data-dir", help="数据目录，默认 ~/Library/Application Support/SceneLingo")
     parser.add_argument("--db-path", help="SQLite 数据库路径；相对路径以数据目录为基准")
     parser.add_argument("--log-level", help="日志级别：DEBUG/INFO/WARNING/ERROR")
+    parser.add_argument("--reload", action="store_true", help="开发预览：监视 app/ 变更并安全重载（仍仅监听 127.0.0.1）")
     args = parser.parse_args(argv)
     try:
         settings = load_settings(port=args.port, data_dir=args.data_dir,
@@ -190,6 +192,16 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as exc:
         print(f"启动失败：{exc}", file=sys.stderr)
         return 2
+    if args.reload:
+        os.environ["SCENELINGO_PORT"] = str(settings.port)
+        os.environ["SCENELINGO_DATA_DIR"] = str(settings.data_dir)
+        os.environ["SCENELINGO_LOG_LEVEL"] = settings.log_level
+        if settings.db_path is not None:
+            os.environ["SCENELINGO_DB_PATH"] = str(settings.db_path)
+        uvicorn.run("app.main:create_app", factory=True, host="127.0.0.1", port=settings.port,
+                    workers=1, reload=True, reload_dirs=[str(Path(__file__).parent)],
+                    access_log=False, log_level=settings.log_level.lower())
+        return 0
     try:
         prepare_data_dir(settings.data_dir)
         database = Database(settings.database_path)
