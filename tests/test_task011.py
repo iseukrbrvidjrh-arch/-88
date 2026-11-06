@@ -72,7 +72,7 @@ def test_v7_migrates_v6_and_preserves_costs(tmp_path):
         conn.execute("""INSERT INTO cost_record(request_id,purpose,model_id,input_tokens,output_tokens,usage_source,estimated_cost,currency,price_version,status,created_at)
             VALUES('old','translation','qwen3.8-max',1,1,'api','0.1','CNY','old','success','now')""")
     result=initialize_database(db)
-    assert result.applied_versions==(7,) and result.backup_path
+    assert result.applied_versions==(7, 8) and result.backup_path
     with db.connection() as conn:
         assert conn.execute("SELECT request_id,conversation_id,message_id FROM cost_record").fetchone()==("old",None,None)
         assert {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")} >= {"ai_conversation","ai_message","ai_message_context"}

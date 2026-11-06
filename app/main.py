@@ -25,6 +25,7 @@ from app.api.speech import router as speech_router
 from app.api.ai import router as ai_router
 from app.api.chat import router as chat_router
 from app.api.progress import router as progress_router
+from app.api.dictation import router as dictation_router
 from app.core.errors import ApplicationError
 from app.core.config import DEFAULT_PORT, ConfigError, Settings, load_settings, prepare_data_dir
 from app.core.logging import close_logger, open_logger
@@ -174,6 +175,7 @@ def create_app(settings: Settings | None = None,
     app.include_router(ai_router)
     app.include_router(chat_router)
     app.include_router(progress_router)
+    app.include_router(dictation_router)
     app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
     return app
 

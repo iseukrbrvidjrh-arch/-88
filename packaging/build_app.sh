@@ -3,7 +3,9 @@ set -euo pipefail
 
 ROOT="${0:A:h:h}"
 APP="$ROOT/dist/SceneLingo.app"
-CONTENTS="$APP/Contents"
+BUNDLE_STAGE="$ROOT/dist/.SceneLingo-build-$$.app"
+BACKUP="$ROOT/dist/.SceneLingo-previous-$$.app"
+CONTENTS="$BUNDLE_STAGE/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
 FRAMEWORKS="$CONTENTS/Frameworks"
@@ -15,7 +17,9 @@ SITE_PACKAGES="$ROOT/.venv/lib/python3.14/site-packages"
 [[ -d "$PYTHON_FRAMEWORK" && -d "$SITE_PACKAGES" ]] || { echo "错误：未找到 Python 3.14 运行环境。" >&2; exit 1; }
 
 mkdir -p "$ROOT/dist"
-if [[ -e "$APP" ]]; then rm -rf "$APP"; fi
+cleanup() { [[ -e "$BUNDLE_STAGE" ]] && /bin/rm -rf "$BUNDLE_STAGE"; }
+trap cleanup EXIT
+[[ ! -e "$BUNDLE_STAGE" && ! -e "$BACKUP" ]] || { echo "错误：构建临时路径已存在。" >&2; exit 1; }
 mkdir -p "$MACOS" "$RESOURCES/project" "$RESOURCES/site-packages" "$FRAMEWORKS/ThirdParty"
 
 /usr/bin/ditto "$PYTHON_FRAMEWORK" "$FRAMEWORKS/Python.framework"
@@ -24,7 +28,7 @@ mkdir -p "$MACOS" "$RESOURCES/project" "$RESOURCES/site-packages" "$FRAMEWORKS/T
 /bin/rm -f "$FRAMEWORKS/Python.framework/Versions/3.14/lib/python3.14/site-packages"
 /bin/cp "$PYTHON_CELLAR/bin/python3.14" "$MACOS/python3.14"
 /usr/bin/ditto "$SITE_PACKAGES" "$RESOURCES/site-packages"
-/usr/bin/rsync -a --exclude '.DS_Store' "$ROOT/app/" "$RESOURCES/project/app/"
+/usr/bin/rsync -a --exclude '.DS_Store' --exclude '__pycache__' --exclude '*.pyc' "$ROOT/app/" "$RESOURCES/project/app/"
 /bin/cp "$ROOT/THIRD_PARTY_NOTICES.md" "$RESOURCES/project/THIRD_PARTY_NOTICES.md"
 /bin/cp "$ROOT/packaging/Info.plist" "$CONTENTS/Info.plist"
 
@@ -79,6 +83,13 @@ while IFS= read -r -d '' binary; do
     /usr/bin/codesign --force --sign - "$binary"
   fi
 done < <(/usr/bin/find "$CONTENTS" -type f -print0)
-/usr/bin/codesign --force --sign - "$APP"
-/usr/bin/codesign --verify --strict "$APP"
+/usr/bin/codesign --force --sign - "$BUNDLE_STAGE"
+/usr/bin/codesign --verify --strict "$BUNDLE_STAGE"
+if [[ -e "$APP" ]]; then /bin/mv "$APP" "$BACKUP"; fi
+if ! /bin/mv "$BUNDLE_STAGE" "$APP"; then
+  [[ -e "$BACKUP" ]] && /bin/mv "$BACKUP" "$APP"
+  echo "错误：无法安装新应用，已尝试恢复旧版本。" >&2
+  exit 1
+fi
+[[ ! -e "$BACKUP" ]] || /bin/rm -rf "$BACKUP"
 echo "已生成：$APP"

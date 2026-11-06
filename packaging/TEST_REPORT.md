@@ -1,33 +1,24 @@
-# SceneLingo.app 打包验收报告
+# SceneLingo V0.3 应用交付验收
 
-日期：2026-11-01
-环境：macOS 26.5.1，Apple Silicon arm64
+日期：2026-11-01 · macOS 26.5.1 · Apple Silicon arm64
 
-## 已实际验证
+## 已验证
 
-- 在 Finder 中双击 `dist/SceneLingo.app`，无终端窗口，状态窗口和 Chrome 学习页面正常打开。
-- 8765 被未知 Node 服务占用时，没有终止它，SceneLingo 安全选择 18765。
-- 重复双击只保留一个 SceneLingo 服务。
-- 状态窗口“退出 SceneLingo”会正常停止本应用启动的服务；退出后监听端口消失。
-- 使用隔离数据完成：原创 SRT 导入、字幕阅读、IPA、单词与句子 TTS、保存单词、拼写复习、学习记录、创建 AI 会话、Keychain 配置状态。
-- 没有进行真实千问 API 调用。
-- 退出后重启，字幕 1、生词 1、复习记录 1、AI 会话 1 全部恢复，SQLite `integrity_check=ok`。
+- 构建脚本生成 `dist/SceneLingo.app`，版本 0.3.0；应用包 ad-hoc 签名完整性校验通过。
+- 包内 Python、FastAPI、Uvicorn、SQLite 模块可导入；前端、IPA/TTS、Keychain、千问网关、迁移等项目资源随包包含。
+- 主页真实读取进度、学习记录和最近导入字幕；学习工作台继续使用正式 IPA、TTS、学习库、复习、AI 预览/确认与会话历史接口。每日问候只用本地时间和内置文案，不发起网络请求。
+- 前端 JavaScript 语法、页面 ID 合同、本地日期问候时段和相邻日期文案变更检查通过；`git diff --check` 通过。
+- 自动化测试：175 passed，1 条 Starlette 测试客户端弃用警告。
+- 正式用户数据库未被测试写入；网络 API 与千问没有被调用。
 
-## 自动化与构建验证
+## 尚未通过实际GUI验收
 
-- Pytest：175 passed，0 failed（1 个第三方库弃用警告）。
-- 包内 Python/FastAPI/Uvicorn/SQLite/OpenSSL 导入通过。
-- 包内 Mach-O 依赖审计通过：无 `.venv`、项目路径或 Homebrew 运行时依赖。
-- HTML、CSS、JavaScript、IPA 词典和数据库迁移文件均在应用包内。
-- ad-hoc 签名完整性验证通过。
+- 当前执行环境的 Chrome 浏览器自动化宿主不可用；本地 Python 服务也被运行沙箱拒绝监听 `127.0.0.1`。
+- 从终端直接执行 AppKit 主程序会因未通过 macOS LaunchServices 注册而退出。这不等同于 Finder 双击结果；因此本轮没有声称双击、浏览器流程、端口冲突、重复启动或退出的 GUI 验收通过。
+- 原有自动化测试覆盖业务API；本轮没有以隔离数据库完成完整 SRT→IPA/TTS→复习→聊天→重启的端到端界面测试。
 
-## 尚未实际验证
+## 交付限制
 
-- 没有关闭 macOS 全局网络，避免影响用户其他应用。本地离线路径由现有自动化测试和本地接口分层验证。
-- 未发起真实千问请求；发送预览、同意开关和 Keychain 访问路径已验证。
-
-## 已知限制
-
-- 应用为 Apple Silicon arm64 构建。
-- 未使用 Apple 开发者证书，未公证；换机或下载后可能需要通过 Finder 右键“打开”完成首次启动。
-- 关闭浏览器标签页不等于退出应用，应使用 SceneLingo 状态窗口或应用菜单退出。
+- 个人签名应用，未使用开发者证书或公证；首次打开如被 Gatekeeper 拦截，请在 Finder 右键应用并选择“打开”。
+- 构建产物仅支持 Apple Silicon；最终运行时内置 Python，不要求另装 Python。
+- 双击实际启动验收仍需在 Finder 中完成。退出方式为 SceneLingo 菜单或状态窗口里的“退出 SceneLingo”；关闭浏览器标签不会停止服务。

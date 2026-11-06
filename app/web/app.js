@@ -1,7 +1,7 @@
 const token = document.querySelector('meta[name="scenelingo-token"]').content;
 const headers = { 'X-SceneLingo-Token': token, Accept: 'application/json' };
 const $ = (selector) => document.querySelector(selector);
-const state = { libraryPage: 1, detailPage: 1, subtitleId: null, resume: null, targetCueId: null, resumeReviewItemId: null, currentCue: null, selectedWord: null };
+const state = { libraryPage: 1, detailPage: 1, subtitleId: null, resume: null, targetCueId: null, resumeReviewItemId: null, currentCue: null, selectedWord: null, dictationToken: null };
 
 async function api(path) {
   const response = await fetch(path, { headers, cache: 'no-store' });
@@ -33,8 +33,16 @@ function showOnly(selector) {
   ['#progress-dashboard', '#subtitle-library', '#subtitle-detail', '#vocabulary-library', '#vocabulary-detail', '#review-panel', '#chat-panel', '#settings-panel'].forEach((id) => { $(id).hidden = id !== selector; });
   const workbench = selector === '#subtitle-detail';
   document.body.dataset.view = workbench ? 'workbench' : 'standard';
+  if (workbench) requestAnimationFrame(() => window.SceneLingoLayoutPreferences?.apply());
   const titles = { '#subtitle-library':'选择一份字幕，开始在语境里学习。', '#subtitle-detail':'在语境里，把词学活。', '#progress-dashboard':'看见积累，也看见节奏。', '#vocabulary-library':'把遇见的词，变成自己的。', '#review-panel':'按自己的节奏，完成今天的复习。', '#chat-panel':'让 AI 从当前问题开始帮助你。', '#settings-panel':'本地数据和云端发送都由你决定。' };
-  text($('#page-title'), titles[selector] || 'SceneLingo');
+  const title = $('#page-title');
+  if (selector === '#progress-dashboard') {
+    title.replaceChildren();
+    const greeting = document.createElement('span'); greeting.id = 'greeting-period';
+    const encouragement = document.createElement('span'); encouragement.id = 'daily-encouragement';
+    title.append(greeting, document.createTextNode('，'), encouragement);
+    window.SceneLingoDailyGreeting?.refresh();
+  } else text(title, titles[selector] || 'SceneLingo');
   const active = { '#progress-dashboard':'show-dashboard', '#subtitle-library':'show-library', '#subtitle-detail':'show-workbench', '#vocabulary-library':'show-vocabulary', '#vocabulary-detail':'show-vocabulary', '#review-panel':'show-review', '#chat-panel':'show-chat', '#settings-panel':'show-settings' }[selector];
   document.querySelectorAll('.side-nav button').forEach((button) => button.classList.toggle('is-active', button.id === active));
 }
@@ -97,7 +105,7 @@ setupWorkbenchChat();
 async function loadProgress() {
   showOnly('#progress-dashboard'); $('#back-to-library').hidden = true;
   try {
-    const [summary, daily, resume] = await Promise.all([api('/api/v1/progress/summary'), api('/api/v1/progress/daily'), api('/api/v1/progress/continue')]);
+    const [summary, daily, resume, subtitles] = await Promise.all([api('/api/v1/progress/summary'), api('/api/v1/progress/daily'), api('/api/v1/progress/continue'), api('/api/v1/subtitles?status=imported&sort=imported_at&page=1&page_size=4')]);
     state.resume = resume;
     const stats = $('#progress-stats'); stats.replaceChildren();
     [['学习词条', summary.total_active], ['待学习', summary.new_count], ['学习中', summary.learning_count], ['已掌握', summary.mastered_count], ['今日到期', summary.due_today_count]].forEach(([label, value]) => {
@@ -107,8 +115,17 @@ async function loadProgress() {
     daily.items.forEach(item=>{const row=document.createElement('article');row.className='daily-record';const accuracy=item.review_accuracy===null?'暂无':`${Math.round(item.review_accuracy*100)}%`;text(row,`${item.date} · 新增词条 ${item.new_learning_item_count} · 复习 ${item.review_attempt_count} 次（${item.distinct_review_item_count} 个词）· 正确 ${item.correct_review_count} · 正确率 ${accuracy} · AI 保存 ${item.ai_saved_content_count}`);records.append(row);});
     text($('#progress-message'),daily.total?'':'暂无学习记录。仅打开、导入或浏览不会产生学习日。');
     $('#continue-card').hidden=!resume.available;
+    $('#continue-empty').hidden=resume.available;
     if(resume.available){const parts=[];if(resume.subtitle)parts.push(`${resume.subtitle.subtitle_title} · cue #${resume.subtitle.cue_sequence}`);if(resume.review)parts.push(`复习剩余 ${resume.review.remaining_count} 个`);text($('#continue-summary'),parts.join('；'));}
     text($('#continue-message'),resume.stale_reference?'部分上次位置已失效；可用位置仍可继续。':(resume.available?'':'还没有可继续的位置。'));
+    const recent = $('#dashboard-recent'); recent.replaceChildren();
+    if (!subtitles.total) text(recent, '还没有字幕。导入一份 SRT 或 VTT，就可以开始学习。');
+    subtitles.items.forEach((item) => {
+      const button = document.createElement('button'); button.type = 'button'; button.dataset.dashboardSubtitleId = item.id;
+      const title = document.createElement('strong'); text(title, item.title);
+      const meta = document.createElement('span'); text(meta, `${item.source_format.toUpperCase()} · ${item.cue_count} 句 · ${item.unique_token_count} 个词形`);
+      button.append(title, meta); recent.append(button);
+    });
     if(resume.stale_reference&&!resume.available){await loadLibrary();text($('#library-message'),'上次学习位置已失效，已返回字幕库。');}
   } catch (_) { text($('#progress-message'),'学习记录加载失败，请重试。'); }
 }
@@ -246,13 +263,26 @@ $('#back-to-library').addEventListener('click', loadLibrary);
 $('#show-library').addEventListener('click', loadLibrary);
 $('#show-workbench').addEventListener('click', () => { if (state.subtitleId) loadDetail(); else loadLibrary(); });
 $('#show-dashboard').addEventListener('click', loadProgress);
+$('#dashboard-import').addEventListener('click', () => { showOnly('#subtitle-library'); $('#subtitle-file').click(); loadLibrary(); });
+$('#show-library-link').addEventListener('click', loadLibrary);
+$('#dashboard-recent').addEventListener('click', (event) => { const button = event.target.closest('[data-dashboard-subtitle-id]'); if (!button) return; state.subtitleId = Number(button.dataset.dashboardSubtitleId); state.detailPage = 1; loadDetail(); });
 $('#show-vocabulary').addEventListener('click', loadVocabulary);
 $('#show-review').addEventListener('click', () => showOnly('#review-panel'));
 $('#show-chat').addEventListener('click', () => { showOnly('#chat-panel'); loadConversations(); });
 $('#show-settings').addEventListener('click', () => { showOnly('#settings-panel'); loadAiSettings(); });
 $('#workbench-import').addEventListener('click', () => { loadLibrary().then(() => $('#subtitle-file').click()); });
 $('#episode-list').addEventListener('click',(event)=>{const button=event.target.closest('[data-episode-id]');if(!button)return;state.subtitleId=Number(button.dataset.episodeId);state.detailPage=1;closeWordPopover();loadDetail();});
-$('#cue-list').addEventListener('click',(event)=>{const word=event.target.closest('.word-token');if(word){openWordPopover(word);return;}const cue=event.target.closest('.cue');if(!cue)return;document.querySelectorAll('.cue.is-active').forEach((item)=>item.classList.remove('is-active'));cue.classList.add('is-active');state.currentCue={id:Number(cue.dataset.cueId),text:cue.dataset.cueText};text($('#workbench-context'),cue.dataset.cueText);put('/api/v1/progress/continue',{subtitle_id:state.subtitleId,cue_id:state.currentCue.id}).catch(()=>text($('#detail-message'),'当前位置暂未保存。'));});
+function selectCue(cue) {
+  document.querySelectorAll('.cue.is-active').forEach((item)=>item.classList.remove('is-active')); cue.classList.add('is-active');
+  state.currentCue={id:Number(cue.dataset.cueId),text:cue.dataset.cueText}; state.dictationToken=crypto.randomUUID();
+  text($('#workbench-context'),cue.dataset.cueText); text($('#dictation-cue-label'),`第 ${cue.querySelector('.cue-time')?.textContent?.split('#').pop() || ''} 句`);
+  $('#dictation-input').disabled=false; $('#dictation-submit').disabled=false; $('#dictation-play').disabled=false; $('#dictation-input').value=''; $('#dictation-result').hidden=true; text($('#dictation-message'),'');
+  put('/api/v1/progress/continue',{subtitle_id:state.subtitleId,cue_id:state.currentCue.id}).catch(()=>text($('#detail-message'),'当前位置暂未保存。'));
+}
+$('#cue-list').addEventListener('click',(event)=>{const word=event.target.closest('.word-token');if(word){openWordPopover(word);return;}const cue=event.target.closest('.cue');if(!cue)return;selectCue(cue);});
+async function playDictationCue(){if(!state.currentCue)return;try{await post('/api/v1/speech/play',{text:state.currentCue.text,target:'sentence'});text($('#dictation-message'),'正在本地朗读，请凭记忆输入。');}catch(_){text($('#dictation-message'),'本地语音不可用或播放失败。');}}
+$('#dictation-play').addEventListener('click',playDictationCue);
+$('#dictation-submit').addEventListener('click',async()=>{if(!state.currentCue)return;const input=$('#dictation-input').value;if(!input.trim()){text($('#dictation-message'),'请先输入听到的内容。');return;}$('#dictation-submit').disabled=true;text($('#dictation-message'),'正在保存听写结果…');try{const result=await post('/api/v1/dictation/attempts',{subtitle_id:state.subtitleId,cue_id:state.currentCue.id,user_input:input,attempt_token:state.dictationToken});const a=result.attempt;const box=$('#dictation-result');box.replaceChildren();const title=document.createElement('strong');text(title,a.is_exact?'完全正确':'需要再听一遍');const detail=document.createElement('p');text(detail,`${a.accuracy_percent}% · 匹配 ${a.matched_word_count}/${a.target_word_count} 个词`);const target=document.createElement('p');text(target,`原文：${a.target_text}`);box.append(title,detail,target);box.hidden=false;text($('#dictation-message'),result.duplicate?'已恢复上次提交的结果。':'听写结果已保存到本机。');}catch(_){text($('#dictation-message'),'听写提交失败，请重试。');}finally{$('#dictation-submit').disabled=false;}});
 $('#play-current-sentence').addEventListener('click',async()=>{if(!state.currentCue)return;try{const result=await post('/api/v1/speech/play',{text:state.currentCue.text,target:'sentence'});text($('#detail-message'),`正在本地朗读（${result.character_count} 字符）`);}catch(_){text($('#detail-message'),'本地语音不可用或播放失败。');}});
 $('#close-word-popover').addEventListener('click',closeWordPopover);
 $('#popover-speak').addEventListener('click',async()=>{if(!state.selectedWord)return;try{await post('/api/v1/speech/play',{text:state.selectedWord.word,target:'word'});text($('#popover-message'),'正在使用 macOS 本地语音朗读。');}catch(_){text($('#popover-message'),'本地语音不可用或播放失败。');}});

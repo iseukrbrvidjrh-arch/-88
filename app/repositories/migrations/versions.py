@@ -163,6 +163,20 @@ def _create_ai_gateway_tables(session: MigrationSession) -> None:
     )""")
 
 
+def _create_dictation_tables(session: MigrationSession) -> None:
+    session.execute("""CREATE TABLE dictation_attempt (
+        id INTEGER PRIMARY KEY, attempt_token TEXT NOT NULL UNIQUE,
+        subtitle_id INTEGER NOT NULL REFERENCES subtitle(id) ON DELETE RESTRICT,
+        cue_id INTEGER NOT NULL REFERENCES cue(id) ON DELETE RESTRICT,
+        target_text TEXT NOT NULL, user_input TEXT NOT NULL, normalized_input TEXT NOT NULL,
+        matched_word_count INTEGER NOT NULL CHECK(matched_word_count >= 0),
+        target_word_count INTEGER NOT NULL CHECK(target_word_count >= 0),
+        accuracy_percent INTEGER NOT NULL CHECK(accuracy_percent BETWEEN 0 AND 100),
+        is_exact INTEGER NOT NULL CHECK(is_exact IN (0,1)), attempted_at TEXT NOT NULL
+    )""")
+    session.execute("CREATE INDEX idx_dictation_cue_date ON dictation_attempt(subtitle_id, cue_id, attempted_at DESC)")
+
+
 def _create_ai_chat_tables(session: MigrationSession) -> None:
     session.execute("""CREATE TABLE ai_conversation (
         id INTEGER PRIMARY KEY,
@@ -224,4 +238,5 @@ MIGRATIONS = (
     Migration(5, "Create immutable idempotent review attempt history", _create_review_attempts),
     Migration(6, "Create AI result cache, cost ledger and non-secret settings", _create_ai_gateway_tables),
     Migration(7, "Create AI Tutor conversations, messages, contexts and chat cost links", _create_ai_chat_tables),
+    Migration(8, "Create isolated subtitle cue dictation attempts", _create_dictation_tables),
 )
