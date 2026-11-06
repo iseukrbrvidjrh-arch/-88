@@ -1,7 +1,7 @@
 const token = document.querySelector('meta[name="scenelingo-token"]').content;
 const headers = { 'X-SceneLingo-Token': token, Accept: 'application/json' };
 const $ = (selector) => document.querySelector(selector);
-const state = { libraryPage: 1, detailPage: 1, subtitleId: null, resume: null, targetCueId: null, resumeReviewItemId: null, currentCue: null, selectedWord: null, dictationToken: null };
+const state = { libraryPage: 1, detailPage: 1, subtitleId: null, resume: null, targetCueId: null, resumeReviewItemId: null, currentCue: null, selectedWord: null, dictationToken: null, cues: [] };
 
 async function api(path) {
   const response = await fetch(path, { headers, cache: 'no-store' });
@@ -161,7 +161,7 @@ async function loadDetail() {
     showOnly('#subtitle-detail'); $('#back-to-library').hidden = false;
     text($('#detail-title'), data.subtitle.title);
     text($('#detail-summary'), `${data.subtitle.cue_count} cue · ${data.subtitle.token_occurrence_count} 词次 · ${data.subtitle.unique_token_count} 去重词形`);
-    const list = $('#cue-list'); list.replaceChildren();
+    const list = $('#cue-list'); list.replaceChildren(); state.cues = data.cues;
     data.cues.forEach((cue) => {
       const item = document.createElement('li'); item.id = `cue-${cue.id}`; item.className = 'cue'; item.dataset.cueId=cue.id; item.dataset.cueText=cue.text;
       const timeline = document.createElement('span'); timeline.className = 'cue-time'; text(timeline, `${cue.start_time.slice(3,8)}\n#${cue.sequence}`);
@@ -274,7 +274,8 @@ $('#workbench-import').addEventListener('click', () => { loadLibrary().then(() =
 $('#episode-list').addEventListener('click',(event)=>{const button=event.target.closest('[data-episode-id]');if(!button)return;state.subtitleId=Number(button.dataset.episodeId);state.detailPage=1;closeWordPopover();loadDetail();});
 function selectCue(cue) {
   document.querySelectorAll('.cue.is-active').forEach((item)=>item.classList.remove('is-active')); cue.classList.add('is-active');
-  state.currentCue={id:Number(cue.dataset.cueId),text:cue.dataset.cueText}; state.dictationToken=crypto.randomUUID();
+  state.currentCue=state.cues.find(item=>item.id===Number(cue.dataset.cueId))||{id:Number(cue.dataset.cueId),text:cue.dataset.cueText}; state.dictationToken=crypto.randomUUID();
+  const media=remoteMedia(); if(media&&!media.hidden&&Number.isFinite(state.currentCue.start_ms)) media.currentTime=state.currentCue.start_ms/1000;
   text($('#workbench-context'),cue.dataset.cueText); text($('#dictation-cue-label'),`第 ${cue.querySelector('.cue-time')?.textContent?.split('#').pop() || ''} 句`);
   $('#dictation-input').disabled=false; $('#dictation-submit').disabled=false; $('#dictation-play').disabled=false; $('#dictation-prev').disabled=false; $('#dictation-next').disabled=false; $('#dictation-input').value=''; $('#dictation-result').hidden=true; text($('#dictation-message'),'');
   put('/api/v1/progress/continue',{subtitle_id:state.subtitleId,cue_id:state.currentCue.id}).catch(()=>text($('#detail-message'),'当前位置暂未保存。'));
@@ -285,6 +286,11 @@ $('#dictation-play').addEventListener('click',playDictationCue);
 function moveDictation(delta){const rows=[...document.querySelectorAll('#cue-list .cue')];if(!state.currentCue||!rows.length)return;const index=rows.findIndex(row=>Number(row.dataset.cueId)===state.currentCue.id);const next=rows[index+delta];if(next){selectCue(next);next.scrollIntoView({block:'nearest'});}}
 $('#dictation-prev').addEventListener('click',()=>moveDictation(-1));
 $('#dictation-next').addEventListener('click',()=>moveDictation(1));
+function remoteMedia(){return $('#remote-video').hidden ? $('#remote-audio') : $('#remote-video');}
+function activateCueByTime(ms){const cue=state.cues.find(item=>ms>=item.start_ms&&ms<item.end_ms);if(!cue)return;const row=document.querySelector(`#cue-${cue.id}`);if(row&&!row.classList.contains('is-active')){document.querySelectorAll('.cue.is-active').forEach(item=>item.classList.remove('is-active'));row.classList.add('is-active');row.scrollIntoView({block:'nearest'});state.currentCue=cue;}}
+function validRemoteUrl(value){try{const url=new URL(value);return url.protocol==='https:'&&url.username===''&&url.password==='';}catch(_){return false;}}
+$('#remote-player-form').addEventListener('submit',(event)=>{event.preventDefault();const value=$('#remote-player-url').value.trim();if(!validRemoteUrl(value)){text($('#remote-player-message'),'请输入不含账号密码的 HTTPS 直链。YouTube、哔哩哔哩和网盘网页地址可能无法由原生播放器播放。');return;}const video=/\.(mp4|webm|ogv|m3u8)(?:$|[?#])/i.test(value);const media=video?$('#remote-video'):$('#remote-audio');const other=video?$('#remote-audio'):$('#remote-video');other.pause();other.removeAttribute('src');other.hidden=true;media.src=value;media.hidden=false;media.load();text($('#remote-player-message'),'已加载远程媒体；媒体由第三方服务器提供，SceneLingo 不下载或上传。');});
+['remote-video','remote-audio'].forEach(id=>$('#'+id).addEventListener('timeupdate',event=>activateCueByTime(event.target.currentTime*1000)));
 $('#dictation-submit').addEventListener('click',async()=>{if(!state.currentCue)return;const input=$('#dictation-input').value;if(!input.trim()){text($('#dictation-message'),'请先输入听到的内容。');return;}$('#dictation-submit').disabled=true;text($('#dictation-message'),'正在保存听写结果…');try{const result=await post('/api/v1/dictation/attempts',{subtitle_id:state.subtitleId,cue_id:state.currentCue.id,user_input:input,attempt_token:state.dictationToken});const a=result.attempt;const box=$('#dictation-result');box.replaceChildren();const title=document.createElement('strong');text(title,a.is_exact?'完全正确':'需要再听一遍');const detail=document.createElement('p');text(detail,`${a.accuracy_percent}% · 匹配 ${a.matched_word_count}/${a.target_word_count} 个词`);const target=document.createElement('p');text(target,`原文：${a.target_text}`);const retry=document.createElement('button');retry.type='button';text(retry,'再听一次');retry.addEventListener('click',playDictationCue);box.append(title,detail,target,retry);box.hidden=false;text($('#dictation-message'),result.duplicate?'已恢复上次提交的结果。':'听写结果已保存到本机。');}catch(_){text($('#dictation-message'),'听写提交失败，请重试。');}finally{$('#dictation-submit').disabled=false;}});
 $('#play-current-sentence').addEventListener('click',async()=>{if(!state.currentCue)return;try{const result=await post('/api/v1/speech/play',{text:state.currentCue.text,target:'sentence'});text($('#detail-message'),`正在本地朗读（${result.character_count} 字符）`);}catch(_){text($('#detail-message'),'本地语音不可用或播放失败。');}});
 $('#close-word-popover').addEventListener('click',closeWordPopover);
